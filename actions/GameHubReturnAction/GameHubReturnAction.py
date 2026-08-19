@@ -73,7 +73,7 @@ class GameHubReturnAction(ActionBase):
 
     def on_ready(self):
         self._ensure_media_control()
-        self.update_display()
+        GLib.idle_add(self.update_display)
 
     def on_key_down(self):
         controller = self.get_deck_controller_to_use()

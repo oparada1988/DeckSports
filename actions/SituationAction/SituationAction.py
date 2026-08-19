@@ -76,7 +76,7 @@ class SituationAction(ActionBase):
     def on_ready(self):
         self._ensure_media_control()
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
-        self.update_display()
+        GLib.idle_add(self.update_display)
 
     def on_remove(self):
         self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
