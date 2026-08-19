@@ -69,7 +69,7 @@ class CelebrationTestAction(ActionBase):
         state = self.plugin_base.sports_service.get_game_state(hub_league, hub_team_id)
 
         # Target team is the followed team / home team
-        team = state.followed_team if state.followed_team.name else state.home_team
+        team = state.away_team if (state.followed_team_id and str(state.away_team.id) == str(state.followed_team_id)) else state.home_team
         team_name = team.name if team.name else "Cowboys"
         team_abbrev = team.abbreviation if team.abbreviation else "DAL"
         p_color = team.color if team.color else (0, 53, 148, 255)
@@ -92,7 +92,7 @@ class CelebrationTestAction(ActionBase):
         my_coords = getattr(self.input_ident, "coords", None)
         hub_league, hub_team_id, _ = self.plugin_base.sports_service.get_nearest_hub_target(my_coords)
         state = self.plugin_base.sports_service.get_game_state(hub_league, hub_team_id)
-        team = state.followed_team if state.followed_team.name else state.home_team
+        team = state.away_team if (state.followed_team_id and str(state.away_team.id) == str(state.followed_team_id)) else state.home_team
 
         img = Image.new("RGBA", (100, 100), (22, 24, 32, 255))
         draw = ImageDraw.Draw(img)

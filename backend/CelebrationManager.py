@@ -153,21 +153,28 @@ class CelebrationManager:
 
                 draw.text((canvas_w // 2, banner_y2 - 22), f"{team_name.upper()}", fill=(200, 225, 255, 255), anchor="mm", font=font_sub)
 
-                active_page = getattr(controller, "active_page", None)
-                if active_page:
-                    all_actions = active_page.get_all_actions()
-                    for act in all_actions:
-                        coords = getattr(act.input_ident, "coords", None)
-                        if coords and len(coords) >= 2:
-                            kx, ky = coords[0], coords[1]
-                            if 0 <= kx < cols and 0 <= ky < rows:
-                                tile = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
-                                act.set_media(image=tile)
+                # Slice full canvas into 100x100 tiles
+                tiles = {}
+                for ky in range(rows):
+                    for kx in range(cols):
+                        tiles[(kx, ky)] = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
 
+                def _push_tiles(t_dict):
+                    active_page = getattr(controller, "active_page", None)
+                    if active_page:
+                        for act in active_page.get_all_actions():
+                            coords = getattr(act.input_ident, "coords", None)
+                            if coords and len(coords) >= 2:
+                                t = t_dict.get((coords[0], coords[1]))
+                                if t:
+                                    act.set_media(image=t)
+
+                GLib.idle_add(_push_tiles, tiles)
                 time.sleep(frame_duration)
 
         except Exception as e:
-            pass
+            import logging
+            logging.getLogger("DeckSports").error(f"Error in score celebration animation: {e}")
         finally:
             with self._lock:
                 self.is_animating = False
