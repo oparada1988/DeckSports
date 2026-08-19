@@ -9,6 +9,7 @@ import globals as gl
 
 from src.backend.PluginManager.PluginBase import PluginBase
 from src.backend.PluginManager.ActionHolder import ActionHolder
+from src.backend.PluginManager.ActionHolderGroup import ActionHolderGroup
 from src.backend.DeckManagement.InputIdentifier import Input
 from src.backend.PluginManager.ActionInputSupport import ActionInputSupport
 
@@ -154,6 +155,20 @@ class DeckSports(PluginBase):
             }
         )
         self.add_action_holder(self.scoring_holder)
+
+        # Group sub-actions inside a clean, collapsed folder in the sidebar
+        self.dashboard_group = ActionHolderGroup(
+            group_name="Game Hub Dashboard Components",
+            action_holders=[
+                self.return_holder,
+                self.line_score_holder,
+                self.leader_holder,
+                self.situation_holder,
+                self.stats_holder,
+                self.scoring_holder
+            ]
+        )
+        self.add_action_holder_group(self.dashboard_group)
 
         # Register plugin with StreamController
         self.register(
