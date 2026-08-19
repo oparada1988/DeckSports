@@ -95,7 +95,13 @@ class GameHubAction(ActionBase):
         team_id = settings.get("team_id", "")
         refresh = settings.get("refresh_seconds", 15)
 
-        if not team_id:
+        dash_target = self.plugin_base.sports_service.get_active_dashboard_target()
+        if dash_target and not settings.get("league"):
+            league, team_id = dash_target
+            settings["league"] = league
+            settings["team_id"] = team_id
+            self.set_settings(settings)
+        elif not team_id:
             teams = self.plugin_base.sports_service.get_teams(league)
             if teams:
                 team_id = teams[0]["id"]
@@ -115,12 +121,7 @@ class GameHubAction(ActionBase):
         self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
 
     def on_game_state_updated(self, league_key: str, team_id: str, state: GameState):
-        settings = self.get_settings()
-        my_league = settings.get("league", "NFL")
-        my_team = str(settings.get("team_id", ""))
-
-        if league_key == my_league and str(team_id) == my_team:
-            GLib.idle_add(self.update_display)
+        GLib.idle_add(self.update_display)
 
     def on_tick(self):
         settings = self.get_settings()
@@ -301,12 +302,15 @@ class GameHubAction(ActionBase):
 
     def _on_test_celebration_clicked(self, _btn):
         settings = self.get_settings()
-        league = settings.get("league", "NFL")
-        team_id = str(settings.get("team_id", ""))
+        coords = getattr(self.input_ident, "coords", None)
+        hub_league, hub_team_id, _ = self.plugin_base.sports_service.get_nearest_hub_target(coords)
+        league = settings.get("league") or hub_league
+        team_id = str(settings.get("team_id") or hub_team_id)
+
         state = self.plugin_base.sports_service.get_game_state(league, team_id)
         team = state.away_team if (state.followed_team_id and str(state.away_team.id) == str(state.followed_team_id)) else state.home_team
-        team_name = team.name if team.name else "Cowboys"
-        team_abbrev = team.abbreviation if team.abbreviation else "DAL"
+        team_name = team.name if team.name else "Followed Team"
+        team_abbrev = team.abbreviation if team.abbreviation else "TEAM"
         p_color = team.color if team.color else (0, 53, 148, 255)
         alt_color = team.alternate_color if team.alternate_color else (200, 205, 215, 255)
 
