@@ -11,7 +11,7 @@ from gi.repository import Gtk, Adw, GLib
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 from src.backend.PluginManager.ActionBase import ActionBase
-from backend.SportsService import GameState, TeamInfo
+from ...backend.SportsService import GameState, TeamInfo
 
 SIDE_OPTIONS = [
     ("Auto (Left = Away, Right = Home)", "auto"),

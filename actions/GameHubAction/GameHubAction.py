@@ -10,8 +10,8 @@ from gi.repository import Gtk, Adw, GLib
 from PIL import Image, ImageDraw, ImageFont
 
 from src.backend.PluginManager.ActionBase import ActionBase
-from backend.Leagues import LEAGUES, LEAGUE_KEYS
-from backend.SportsService import GameState
+from ...backend.Leagues import LEAGUES, LEAGUE_KEYS
+from ...backend.SportsService import GameState
 
 REFRESH_OPTIONS = [
     ("Adaptive (15s live / 10m off)", 15),
