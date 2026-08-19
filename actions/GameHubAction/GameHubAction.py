@@ -136,12 +136,23 @@ class GameHubAction(ActionBase):
 
         if tap_mode == 0:
             # Open interactive Game Hub Dashboard
-            deck = getattr(self, "deck_controller", None)
-            if deck:
-                key_count = getattr(deck, "number_of_keys", 15)
-                cols = getattr(deck, "keys_per_row", 5)
-                is_xl = (key_count >= 32 or cols >= 8 or "XL" in str(getattr(deck, "deck_type", "")))
+            controller = getattr(self, "deck_controller", None)
+            if not controller and hasattr(gl, "deck_manager") and getattr(gl.deck_manager, "deck_controller", None):
+                controllers = gl.deck_manager.deck_controller
+                if controllers:
+                    controller = controllers[0]
 
+            if controller:
+                key_count = 15
+                if hasattr(controller, "deck") and hasattr(controller.deck, "key_count"):
+                    try:
+                        key_count = controller.deck.key_count()
+                    except Exception:
+                        pass
+                elif hasattr(controller, "inputs") and Input.Key in controller.inputs:
+                    key_count = len(controller.inputs[Input.Key])
+
+                is_xl = (key_count >= 32)
                 page_filename = "DeckSports_GameHub_XL.json" if is_xl else "DeckSports_GameHub_MK2.json"
                 user_page_path = os.path.join(gl.DATA_PATH, "pages", page_filename)
 
@@ -152,10 +163,14 @@ class GameHubAction(ActionBase):
                         user_page_path = bundled_path
 
                 if os.path.isfile(user_page_path):
-                    active_page = getattr(deck, "active_page", None)
-                    if active_page and hasattr(active_page, "json_path"):
-                        self.plugin_base.sports_service.set_origin_page(id(deck), active_page.json_path)
-                    deck.load_page(user_page_path)
+                    if controller.active_page is not None and hasattr(controller.active_page, "json_path"):
+                        curr_path = controller.active_page.json_path
+                        if curr_path and not ("GameHub" in os.path.basename(curr_path)):
+                            self.plugin_base.sports_service.set_origin_page(id(controller), curr_path)
+
+                    page_obj = gl.page_manager.get_page(user_page_path, deck_controller=controller)
+                    if page_obj:
+                        controller.load_page(page_obj)
 
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:
