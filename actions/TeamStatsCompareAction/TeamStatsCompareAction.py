@@ -55,12 +55,16 @@ class TeamStatsCompareAction(ActionBase):
 
     def _ensure_media_control(self):
         try:
+            if not self.get_is_present():
+                return
+            own_idx = self.get_own_action_index()
+            if own_idx is None or own_idx < 0:
+                return
             input_state = self.get_state()
             if input_state and hasattr(input_state, "action_permission_manager"):
                 pm = input_state.action_permission_manager
                 curr_idx = pm.get_image_control_index()
-                own_idx = self.get_own_action_index()
-                if own_idx is not None and (curr_idx is None or curr_idx != own_idx):
+                if curr_idx is None or curr_idx != own_idx:
                     state_dict = pm.get_state_dict()
                     actions = state_dict.get("actions", [])
                     if curr_idx is None or len(actions) <= 1:
