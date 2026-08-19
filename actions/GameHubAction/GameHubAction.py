@@ -63,22 +63,51 @@ class GameHubAction(ActionBase):
         self._is_updating_ui: bool = False
 
     def on_ready(self):
-        self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
+        settings = self.get_settings()
+        league = settings.get("league", "NFL")
+        team_id = settings.get("team_id", "")
+        refresh = settings.get("refresh_seconds", 15)
+
+        if not team_id:
+            teams = self.plugin_base.sports_service.get_teams(league)
+            if teams:
+                team_id = teams[0]["id"]
+                settings["team_id"] = team_id
+                self.set_settings(settings)
+
         coords = getattr(self.input_ident, "coords", None)
-        self.plugin_base.sports_service.set_hub_coords(coords)
-        self._sync_config_to_service()
+        self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id)
+        self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
+
+        self.plugin_base.sports_service.fetch_async(league, team_id, force=True, refresh_seconds=refresh)
         self.update_display()
 
-    def on_game_state_updated(self, state: GameState):
-        GLib.idle_add(self.update_display)
+    def on_remove(self):
+        self.plugin_base.sports_service.unregister_hub(id(self))
+        self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
+
+    def on_game_state_updated(self, league_key: str, team_id: str, state: GameState):
+        settings = self.get_settings()
+        my_league = settings.get("league", "NFL")
+        my_team = str(settings.get("team_id", ""))
+
+        if league_key == my_league and str(team_id) == my_team:
+            GLib.idle_add(self.update_display)
 
     def on_tick(self):
-        # Throttled background fetch check
-        self.plugin_base.sports_service.fetch_async(force=False)
+        settings = self.get_settings()
+        league = settings.get("league", "NFL")
+        team_id = str(settings.get("team_id", ""))
+        refresh = settings.get("refresh_seconds", 15)
+        if league and team_id:
+            self.plugin_base.sports_service.fetch_async(league, team_id, force=False, refresh_seconds=refresh)
 
     def on_key_down(self):
-        # Instant manual refresh on press
-        self.plugin_base.sports_service.fetch_async(force=True)
+        settings = self.get_settings()
+        league = settings.get("league", "NFL")
+        team_id = str(settings.get("team_id", ""))
+        if league and team_id:
+            self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
 
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:
@@ -152,7 +181,6 @@ class GameHubAction(ActionBase):
         self._is_updating_ui = True
         self._current_team_list = self.plugin_base.sports_service.get_teams(league_key)
 
-        # Clear existing items
         while self._team_model.get_n_items() > 0:
             self._team_model.remove(0)
 
@@ -174,16 +202,17 @@ class GameHubAction(ActionBase):
             new_league = LEAGUE_KEYS[idx]
             settings = self.get_settings()
             settings["league"] = new_league
-            self.set_settings(settings)
 
-            # Reload teams for this league
             self._populate_team_dropdown(new_league)
             if self._current_team_list:
                 first_team_id = self._current_team_list[0]["id"]
                 settings["team_id"] = first_team_id
-                self.set_settings(settings)
+            self.set_settings(settings)
 
-            self._sync_config_to_service()
+            coords = getattr(self.input_ident, "coords", None)
+            self.plugin_base.sports_service.register_hub(id(self), coords, new_league, settings.get("team_id", ""))
+            self.plugin_base.sports_service.fetch_async(new_league, settings.get("team_id", ""), force=True)
+            self.update_display()
 
     def _on_team_changed(self, row, _pspec):
         if self._is_updating_ui:
@@ -195,7 +224,10 @@ class GameHubAction(ActionBase):
             settings["team_id"] = team_obj["id"]
             self.set_settings(settings)
 
-            self._sync_config_to_service()
+            coords = getattr(self.input_ident, "coords", None)
+            self.plugin_base.sports_service.register_hub(id(self), coords, settings.get("league", "NFL"), team_obj["id"])
+            self.plugin_base.sports_service.fetch_async(settings.get("league", "NFL"), team_obj["id"], force=True)
+            self.update_display()
 
     def _on_refresh_changed(self, row, _pspec):
         idx = row.get_selected()
@@ -204,37 +236,21 @@ class GameHubAction(ActionBase):
             settings = self.get_settings()
             settings["refresh_seconds"] = seconds
             self.set_settings(settings)
-            self._sync_config_to_service()
 
     def _on_display_mode_changed(self, row, _pspec):
         idx = row.get_selected()
         settings = self.get_settings()
         settings["display_mode"] = idx
         self.set_settings(settings)
-        self.plugin_base.sports_service.notify_listeners()
-
-    def _sync_config_to_service(self):
-        settings = self.get_settings()
-        league = settings.get("league", "NFL")
-        team_id = settings.get("team_id", "")
-        refresh = settings.get("refresh_seconds", 15)
-
-        if not team_id:
-            teams = self.plugin_base.sports_service.get_teams(league)
-            if teams:
-                team_id = teams[0]["id"]
-                settings["team_id"] = team_id
-                self.set_settings(settings)
-
-        self.plugin_base.sports_service.update_config(league, team_id, refresh)
+        self.update_display()
 
     # --- Canvas Rendering with Pillow ---
     def update_display(self):
-        coords = getattr(self.input_ident, "coords", None)
-        if coords and self.plugin_base.sports_service.hub_coords != coords:
-            self.plugin_base.sports_service.set_hub_coords(coords)
+        settings = self.get_settings()
+        league = settings.get("league", "NFL")
+        team_id = str(settings.get("team_id", ""))
 
-        state = self.plugin_base.sports_service.active_game_state
+        state = self.plugin_base.sports_service.get_game_state(league, team_id)
         has_score_keys = self.plugin_base.sports_service.has_score_actions()
 
         img = Image.new("RGBA", (100, 100), (20, 22, 28, 255))

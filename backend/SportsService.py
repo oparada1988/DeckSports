@@ -1,6 +1,6 @@
 """
 DeckSports Central Sports Data Service
-Fetches ESPN scoreboard and team data, caches assets locally, and coordinates live state.
+Multi-instance ESPN scoreboard coordinator with shared league caching and smart hub pairing.
 """
 
 import os
@@ -9,6 +9,7 @@ import time
 import json
 import hashlib
 import threading
+import math
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Callable
@@ -79,59 +80,134 @@ class SportsService:
         self.team_cache: dict[str, list[dict]] = {}
         self.image_cache: dict[str, Image.Image] = {}
 
-        self.active_game_state = GameState()
-        self.listeners: list[Callable[[GameState], None]] = []
-        self.active_score_actions: set[int] = set()
+        # Multi-game state dictionary keyed by (league_key, team_id)
+        self.game_states: dict[tuple[str, str], GameState] = {}
+
+        # Shared league scoreboard cache: {league_key: {"time": float, "data": dict}}
+        self.league_scoreboard_cache: dict[str, dict] = {}
+        self._league_fetch_locks: dict[str, bool] = {}
+
+        self.listeners: list[Callable[[str, str, GameState], None]] = []
         self._lock = threading.Lock()
 
-        self._current_league: str = "NFL"
-        self._current_team_id: str = ""
-        self._refresh_seconds: int = 15
-        self._last_fetch_time: float = 0.0
-        self._is_fetching: bool = False
-        self.hub_coords: tuple[int, int] | None = None
+        # Hub spatial registry: action_id -> {"coords": (x, y), "league": str, "team_id": str}
+        self.hubs: dict[int, dict] = {}
+        self.active_score_actions: set[int] = set()
+
+    # --- Hub & Satellite Registry ---
+    def register_hub(self, action_id: int, coords: tuple[int, int] | None, league_key: str, team_id: str):
+        with self._lock:
+            self.hubs[action_id] = {
+                "coords": (coords[0], coords[1]) if (coords and isinstance(coords, (list, tuple)) and len(coords) >= 2) else None,
+                "league": league_key,
+                "team_id": team_id
+            }
+        self.notify_listeners(league_key, team_id)
+
+    def unregister_hub(self, action_id: int):
+        with self._lock:
+            info = self.hubs.pop(action_id, None)
+        if info:
+            self.notify_listeners(info["league"], info["team_id"])
 
     def register_score_action(self, action_id: int):
         with self._lock:
             self.active_score_actions.add(action_id)
-        self.notify_listeners()
+        # Notify all hubs so they adapt to 3-button mode
+        self.notify_all()
 
     def unregister_score_action(self, action_id: int):
         with self._lock:
             self.active_score_actions.discard(action_id)
-        self.notify_listeners()
+        self.notify_all()
 
     def has_score_actions(self) -> bool:
         with self._lock:
             return len(self.active_score_actions) > 0
 
-    def set_hub_coords(self, coords: tuple[int, int] | None):
-        new_coords = (coords[0], coords[1]) if (coords and isinstance(coords, (list, tuple)) and len(coords) >= 2) else None
-        if self.hub_coords == new_coords:
-            return  # Prevent recursive notify loops
+    def get_nearest_hub_target(self, my_coords: tuple[int, int] | None) -> tuple[str, str, str]:
+        """
+        Given coordinates (my_x, my_y), finds the best matching GameHub on the deck.
+        Returns (league_key, team_id, side_str) where side_str is 'away' or 'home'.
+        """
+        with self._lock:
+            hubs_list = list(self.hubs.values())
 
-        self.hub_coords = new_coords
-        self.notify_listeners()
+        if not hubs_list:
+            return ("NFL", "", "away")
 
-    def add_listener(self, callback: Callable[[GameState], None]):
+        if not my_coords or not isinstance(my_coords, (list, tuple)) or len(my_coords) < 2:
+            first = hubs_list[0]
+            return (first["league"], first["team_id"], "away")
+
+        my_x, my_y = my_coords[0], my_coords[1]
+
+        # 1. Prefer hubs on the exact same row (my_y == hub_y)
+        same_row_hubs = [h for h in hubs_list if h["coords"] and h["coords"][1] == my_y]
+
+        candidates = same_row_hubs if same_row_hubs else [h for h in hubs_list if h["coords"]]
+        if not candidates:
+            first = hubs_list[0]
+            return (first["league"], first["team_id"], "away")
+
+        # Find closest candidate horizontally/Euclidean
+        best_hub = None
+        min_dist = float("inf")
+        for h in candidates:
+            hx, hy = h["coords"][0], h["coords"][1]
+            dist = math.hypot(my_x - hx, (my_y - hy) * 2) # weight vertical distance higher
+            if dist < min_dist:
+                min_dist = dist
+                best_hub = h
+
+        if not best_hub:
+            best_hub = hubs_list[0]
+
+        hub_x = best_hub["coords"][0] if best_hub["coords"] else 0
+        side = "home" if my_x > hub_x else "away"
+        return (best_hub["league"], best_hub["team_id"], side)
+
+    # --- Listener Management ---
+    def add_listener(self, callback: Callable[[str, str, GameState], None]):
         with self._lock:
             if callback not in self.listeners:
                 self.listeners.append(callback)
 
-    def remove_listener(self, callback: Callable[[GameState], None]):
+    def remove_listener(self, callback: Callable[[str, str, GameState], None]):
         with self._lock:
             if callback in self.listeners:
                 self.listeners.remove(callback)
 
-    def notify_listeners(self):
+    def notify_listeners(self, league_key: str, team_id: str):
+        state = self.get_game_state(league_key, team_id)
         with self._lock:
             callbacks = list(self.listeners)
-        state_copy = self.active_game_state
         for cb in callbacks:
             try:
-                cb(state_copy)
+                cb(league_key, team_id, state)
             except Exception as e:
                 log.error(f"Error in SportsService listener callback: {e}")
+
+    def notify_all(self):
+        with self._lock:
+            items = list(self.game_states.items())
+            callbacks = list(self.listeners)
+        for (l, t), st in items:
+            for cb in callbacks:
+                try:
+                    cb(l, t, st)
+                except Exception:
+                    pass
+
+    def get_game_state(self, league_key: str, team_id: str) -> GameState:
+        with self._lock:
+            key = (league_key, str(team_id))
+            if key in self.game_states:
+                return self.game_states[key]
+            # Return fresh default state
+            new_st = GameState(league_key=league_key, followed_team_id=str(team_id))
+            self.game_states[key] = new_st
+            return new_st
 
     # --- Non-Blocking Image & Logo Caching ---
     def get_image(self, url: str | None, max_size: tuple[int, int] = (80, 80)) -> Image.Image | None:
@@ -164,7 +240,7 @@ class SportsService:
                     img.save(file_path, "PNG")
                     img.thumbnail(max_size, Image.Resampling.LANCZOS)
                     self.image_cache[cache_key] = img
-                    GLib.idle_add(self.notify_listeners)
+                    GLib.idle_add(self.notify_all)
             except Exception:
                 pass
 
@@ -179,11 +255,9 @@ class SportsService:
 
     # --- Teams Fetching with Disk Caching ---
     def get_teams(self, league_key: str) -> list[dict]:
-        """Return list of dicts: [{'id': ..., 'name': ..., 'abbreviation': ..., 'logo': ..., 'color': ...}]"""
         if league_key in self.team_cache and self.team_cache[league_key]:
             return self.team_cache[league_key]
 
-        # Check disk cache
         disk_teams_file = os.path.join(self.cache_dir, f"teams_{league_key}.json")
         if os.path.exists(disk_teams_file):
             try:
@@ -224,7 +298,6 @@ class SportsService:
                 team_list.sort(key=lambda x: x["name"])
                 self.team_cache[league_key] = team_list
 
-                # Save to disk
                 try:
                     with open(disk_teams_file, "w") as f:
                         json.dump(team_list, f)
@@ -237,102 +310,101 @@ class SportsService:
 
         return []
 
-    # --- Live Game Data Fetching (Throttled & Non-Blocking) ---
-    def update_config(self, league_key: str, team_id: str, refresh_seconds: int = 15):
-        changed = (self._current_league != league_key) or (self._current_team_id != team_id) or (self._refresh_seconds != refresh_seconds)
-        self._current_league = league_key
-        self._current_team_id = team_id
-        self._refresh_seconds = max(5, refresh_seconds)
+    # --- Shared League Fetching & Multi-Game Parsing ---
+    def fetch_async(self, league_key: str, team_id: str, force: bool = False, refresh_seconds: int = 15):
+        if not league_key or not team_id:
+            return
 
-        if changed:
-            self.fetch_async(force=True)
-
-    def fetch_async(self, force: bool = False):
         now = time.time()
-        if self._is_fetching:
-            return
-        if not force and (now - self._last_fetch_time < self._refresh_seconds):
+        cached = self.league_scoreboard_cache.get(league_key)
+
+        # If we already have fresh scoreboard data for this league, parse directly
+        if not force and cached and (now - cached["time"] < refresh_seconds):
+            self._update_team_from_data(league_key, team_id, cached["data"])
             return
 
-        self._last_fetch_time = now
-        threading.Thread(target=self._fetch_worker, daemon=True).start()
+        if self._league_fetch_locks.get(league_key, False):
+            return
 
-    def _fetch_worker(self):
-        self._is_fetching = True
+        self._league_fetch_locks[league_key] = True
+        threading.Thread(target=self._fetch_league_worker, args=(league_key, team_id), daemon=True).start()
+
+    def _fetch_league_worker(self, league_key: str, team_id: str):
         try:
-            self._fetch_and_parse()
-        except Exception as e:
-            log.error(f"Error fetching sports data: {e}")
-        finally:
-            self._is_fetching = False
-            GLib.idle_add(self.notify_listeners)
-
-    def _fetch_and_parse(self):
-        cfg = LEAGUES.get(self._current_league)
-        if not cfg:
-            return
-
-        scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/scoreboard"
-        try:
-            r = requests.get(scoreboard_url, timeout=8)
-            if r.status_code != 200:
-                log.warning(f"Scoreboard API returned {r.status_code}")
+            cfg = LEAGUES.get(league_key)
+            if not cfg:
                 return
-            data = r.json()
-        except Exception as e:
-            log.warning(f"Failed to load scoreboard for {self._current_league}: {e}")
-            return
 
+            scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/scoreboard"
+            r = requests.get(scoreboard_url, timeout=8)
+            if r.status_code == 200:
+                data = r.json()
+                self.league_scoreboard_cache[league_key] = {
+                    "time": time.time(),
+                    "data": data
+                }
+
+                # Update all tracked teams for this league
+                with self._lock:
+                    target_teams = [t for (l, t) in self.game_states.keys() if l == league_key]
+                if str(team_id) not in target_teams:
+                    target_teams.append(str(team_id))
+
+                for t_id in target_teams:
+                    self._update_team_from_data(league_key, t_id, data)
+        except Exception as e:
+            log.error(f"Error fetching sports scoreboard for {league_key}: {e}")
+        finally:
+            self._league_fetch_locks[league_key] = False
+
+    def _update_team_from_data(self, league_key: str, team_id: str, data: dict):
         events = data.get("events", [])
         matched_event = None
 
-        # Search for a game involving the followed team
         for ev in events:
             comp = ev.get("competitions", [{}])[0]
             for c in comp.get("competitors", []):
                 t_id = str(c.get("id") or c.get("team", {}).get("id", ""))
-                if t_id and t_id == str(self._current_team_id):
+                if t_id and t_id == str(team_id):
                     matched_event = ev
                     break
             if matched_event:
                 break
 
         new_state = GameState(
-            league_key=self._current_league,
-            followed_team_id=self._current_team_id,
+            league_key=league_key,
+            followed_team_id=str(team_id),
             last_updated=time.time()
         )
 
         if matched_event:
             self._parse_event_into_state(matched_event, new_state)
         else:
-            # If team is not in today's scoreboard, query team schedule
             self._parse_off_game_state(new_state)
 
         with self._lock:
-            self.active_game_state = new_state
+            self.game_states[(league_key, str(team_id))] = new_state
 
-        # Pre-cache team logos in background
+        # Pre-cache logos
         if new_state.away_team.logo_url:
             self.get_image(new_state.away_team.logo_url)
         if new_state.home_team.logo_url:
             self.get_image(new_state.home_team.logo_url)
+
+        GLib.idle_add(lambda: self.notify_listeners(league_key, str(team_id)))
 
     def _parse_event_into_state(self, ev: dict, state: GameState):
         comp = ev.get("competitions", [{}])[0]
         status_info = ev.get("status", {})
         status_type = status_info.get("type", {})
 
-        raw_state = status_type.get("state", "off") # "pre", "in", "post"
+        raw_state = status_type.get("state", "off")
         state.status_state = raw_state
         state.status_detail = status_type.get("shortDetail") or status_type.get("detail", "")
         state.clock = status_info.get("displayClock", "")
         state.period = status_info.get("period", 0)
-
-        # Period text formatting (e.g. Q1, Bot 3rd, Half)
         state.period_text = status_type.get("shortDetail", "")
 
-        # Competitors (Away & Home)
         for c in comp.get("competitors", []):
             home_away = c.get("homeAway", "away")
             t_data = c.get("team", {})
@@ -360,14 +432,12 @@ class SportsService:
             else:
                 state.away_team = team_obj
 
-        # Situation (Possession, Down & Distance, Outs/Bases)
         situation = comp.get("situation", {})
         if situation:
             state.down_distance = situation.get("downDistanceText", "")
             poss_id = str(situation.get("possession", ""))
             state.possession_team_id = poss_id if poss_id else None
 
-            # Baseball: determine active batting team by half inning
             if state.league_key == "MLB":
                 if "Top" in state.status_detail:
                     state.possession_side = "away"
@@ -379,19 +449,17 @@ class SportsService:
                 elif poss_id == state.home_team.id:
                     state.possession_side = "home"
 
-        # Pre-game date formatting
         if raw_state == "pre":
             self._format_game_datetime(ev.get("date", ""), state)
 
     def _parse_off_game_state(self, state: GameState):
-        cfg = LEAGUES.get(self._current_league)
-        if not cfg or not self._current_team_id:
+        cfg = LEAGUES.get(state.league_key)
+        if not cfg or not state.followed_team_id:
             state.status_state = "off"
             state.status_detail = "No Game"
             return
 
-        # Fetch team schedule to find next game
-        url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/teams/{self._current_team_id}/schedule"
+        url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/teams/{state.followed_team_id}/schedule"
         try:
             r = requests.get(url, timeout=6)
             if r.status_code == 200:
@@ -410,9 +478,8 @@ class SportsService:
         except Exception as e:
             log.trace(f"Schedule lookup error: {e}")
 
-        # Fallback if no upcoming game found
-        teams = self.get_teams(self._current_league)
-        my_team = next((t for t in teams if str(t["id"]) == str(self._current_team_id)), None)
+        teams = self.get_teams(state.league_key)
+        my_team = next((t for t in teams if str(t["id"]) == str(state.followed_team_id)), None)
         if my_team:
             state.away_team = TeamInfo(
                 id=my_team["id"],

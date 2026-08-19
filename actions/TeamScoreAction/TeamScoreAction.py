@@ -1,6 +1,7 @@
 """
 DeckSports TeamScoreAction
 Displays live score, team logo, record, and color branding for Team A (Away) or Team B (Home).
+Automatically pairs with the nearest Game Hub on the same row.
 """
 
 import os
@@ -14,7 +15,7 @@ from src.backend.PluginManager.ActionBase import ActionBase
 from ...backend.SportsService import GameState, TeamInfo
 
 SIDE_OPTIONS = [
-    ("Auto (Sync with Game Hub: Left=Away, Right=Home)", "auto"),
+    ("Auto (Sync with nearest Game Hub on row: Left=Away, Right=Home)", "auto"),
     ("Team A / Away (Visiting Team)", "away"),
     ("Team B / Home (Host Team)", "home"),
 ]
@@ -56,11 +57,14 @@ class TeamScoreAction(ActionBase):
         self.plugin_base.sports_service.unregister_score_action(id(self))
         self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
 
-    def on_game_state_updated(self, state: GameState):
+    def on_game_state_updated(self, league_key: str, team_id: str, state: GameState):
         GLib.idle_add(self.update_display)
 
     def on_key_down(self):
-        self.plugin_base.sports_service.fetch_async(force=True)
+        my_coords = getattr(self.input_ident, "coords", None)
+        hub_league, hub_team, _ = self.plugin_base.sports_service.get_nearest_hub_target(my_coords)
+        if hub_league and hub_team:
+            self.plugin_base.sports_service.fetch_async(hub_league, hub_team, force=True)
 
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:
@@ -70,7 +74,7 @@ class TeamScoreAction(ActionBase):
 
         self._side_row = Adw.ComboRow(
             title="Team Slot / Side",
-            subtitle="Auto mode synchronizes relative to the Game Hub button",
+            subtitle="Auto pairs with the Game Hub on the same row",
             model=side_model
         )
 
@@ -91,38 +95,23 @@ class TeamScoreAction(ActionBase):
             self.set_settings(settings)
             self.update_display()
 
-    def _resolve_team_info(self, state: GameState) -> TeamInfo:
+    def _resolve_team_and_state(self) -> tuple[GameState, TeamInfo]:
         settings = self.get_settings()
         side_setting = settings.get("side", "auto")
 
-        # Explicit manual overrides
-        if side_setting == "away":
-            return state.away_team
-        elif side_setting == "home":
-            return state.home_team
-
-        # AUTO MODE: Compare horizontal position relative to Game Hub
-        hub_coords = self.plugin_base.sports_service.hub_coords
         my_coords = getattr(self.input_ident, "coords", None)
+        hub_league, hub_team_id, auto_side = self.plugin_base.sports_service.get_nearest_hub_target(my_coords)
 
-        if hub_coords and my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 2:
-            my_x = my_coords[0]
-            hub_x = hub_coords[0]
+        state = self.plugin_base.sports_service.get_game_state(hub_league, hub_team_id)
 
-            # Right of the Game Hub -> Home Team
-            if my_x > hub_x:
-                return state.home_team
-            # Left of the Game Hub -> Away Team
-            elif my_x < hub_x:
-                return state.away_team
+        chosen_side = auto_side if side_setting == "auto" else side_setting
+        team = state.home_team if chosen_side == "home" else state.away_team
 
-        # Fallback if coordinates cannot be compared
-        return state.away_team
+        return state, team
 
     # --- Canvas Rendering with Pillow ---
     def update_display(self):
-        state = self.plugin_base.sports_service.active_game_state
-        team = self._resolve_team_info(state)
+        state, team = self._resolve_team_and_state()
 
         img = Image.new("RGBA", (100, 100), (22, 24, 30, 255))
         draw = ImageDraw.Draw(img)
@@ -162,7 +151,7 @@ class TeamScoreAction(ActionBase):
         font_score = get_bundled_font(34)
         cx, cy = 50, 52
 
-        # Draw dark outline around score text for guaranteed legibility
+        # Draw dark outline around score text for high contrast
         outline_color = (10, 10, 15, 250)
         for ox in (-2, -1, 0, 1, 2):
             for oy in (-2, -1, 0, 1, 2):
