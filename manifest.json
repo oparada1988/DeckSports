@@ -1,6 +1,18 @@
 {
-    "version": "",
-    "thumbnail": "",
-    "id": "",
-    "name": ""
+    "version": "1.0.0",
+    "author": "oparada1988",
+    "thumbnail": "assets/info.png",
+    "id": "com_oparada1988_DeckSports",
+    "name": "DeckSports",
+    "descriptions": {
+        "en_US": "Live sports scoreboard, game clock, and schedule tracker for StreamController across NFL, NBA, MLB, MLS, UFL, NHL, NCAA, and WNBA."
+    },
+    "short-descriptions": {
+        "en_US": "Live sports scores and game clock"
+    },
+    "tags": ["Sports", "Utility"],
+    "minimum-app-version": "1.0.0",
+    "app-version": "1.5.0-beta",
+    "description": "Live sports scoreboard, game clock, and schedule tracker for StreamController across NFL, NBA, MLB, MLS, UFL, NHL, NCAA, and WNBA.",
+    "short-description": "Live sports scores and game clock"
 }

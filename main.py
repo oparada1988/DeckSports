@@ -1,27 +1,64 @@
-# Import StreamController modules
+"""
+DeckSports Plugin for StreamController
+Live sports scoreboard, game clock, and schedule tracker across NFL, NBA, MLB, MLS, UFL, NHL, NCAA, and WNBA.
+"""
+
+import os
+import sys
+
+# Add plugin directory to path
+plugin_dir = os.path.dirname(__file__)
+if plugin_dir not in sys.path:
+    sys.path.insert(0, plugin_dir)
+
 from src.backend.PluginManager.PluginBase import PluginBase
 from src.backend.PluginManager.ActionHolder import ActionHolder
+from src.backend.DeckManagement.InputIdentifier import Input
+from src.backend.PluginManager.ActionInputSupport import ActionInputSupport
 
-# Import actions
-from .actions.SimpleAction.SimpleAction import SimpleAction
+from backend.SportsService import SportsService
+from actions.GameHubAction.GameHubAction import GameHubAction
+from actions.TeamScoreAction.TeamScoreAction import TeamScoreAction
 
-class PluginTemplate(PluginBase):
+class DeckSports(PluginBase):
     def __init__(self):
         super().__init__()
 
-        ## Register actions
-        self.simple_action_holder = ActionHolder(
-            plugin_base = self,
-            action_base = SimpleAction,
-            action_id = "dev_core447_Template::SimpleAction", # Change this to your own plugin id
-            action_name = "Simple Action",
-        )
-        self.add_action_holder(self.simple_action_holder)
+        # Shared backend data manager
+        self.sports_service = SportsService()
 
-        # Register plugin
+        # 1. Register GameHubAction (Master Coordinator / Clock / Possession)
+        self.game_hub_holder = ActionHolder(
+            plugin_base=self,
+            action_base=GameHubAction,
+            action_id_suffix="GameHubAction",
+            action_name="Game Hub & Clock",
+            action_support={
+                Input.Key: ActionInputSupport.SUPPORTED,
+                Input.Dial: ActionInputSupport.UNSUPPORTED,
+                Input.Touchscreen: ActionInputSupport.UNTESTED,
+            }
+        )
+        self.add_action_holder(self.game_hub_holder)
+
+        # 2. Register TeamScoreAction (Left / Right Live Score & Logo)
+        self.team_score_holder = ActionHolder(
+            plugin_base=self,
+            action_base=TeamScoreAction,
+            action_id_suffix="TeamScoreAction",
+            action_name="Team Score & Logo",
+            action_support={
+                Input.Key: ActionInputSupport.SUPPORTED,
+                Input.Dial: ActionInputSupport.UNSUPPORTED,
+                Input.Touchscreen: ActionInputSupport.UNTESTED,
+            }
+        )
+        self.add_action_holder(self.team_score_holder)
+
+        # Register plugin with StreamController
         self.register(
-            plugin_name = "Template",
-            github_repo = "https://github.com/StreamController/PluginTemplate",
-            plugin_version = "1.0.0",
-            app_version = "1.1.1-alpha"
+            plugin_name="DeckSports",
+            github_repo="https://github.com/oparada1988/DeckSports",
+            plugin_version="1.0.0",
+            app_version="1.5.0-beta"
         )
