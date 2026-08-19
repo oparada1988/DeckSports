@@ -258,3 +258,21 @@ class DeckSports(PluginBase):
         except Exception:
             pass
 
+    def on_uninstall(self) -> None:
+        """
+        Cleans up and deletes provisioned Game Hub page templates when the plugin is uninstalled.
+        """
+        super().on_uninstall()
+        try:
+            if hasattr(gl, "DATA_PATH") and gl.DATA_PATH:
+                pages_dir = os.path.join(gl.DATA_PATH, "pages")
+                for page_name in ("DeckSports_GameHub_XL.json", "DeckSports_GameHub_MK2.json"):
+                    page_path = os.path.join(pages_dir, page_name)
+                    if os.path.exists(page_path):
+                        try:
+                            os.remove(page_path)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
