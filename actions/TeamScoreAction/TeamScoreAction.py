@@ -1,7 +1,7 @@
 """
 DeckSports TeamScoreAction
 Displays live score, team logo, record, and color branding for Team A (Away) or Team B (Home).
-Automatically pairs with the nearest Game Hub on the same row.
+Automatically pairs with the nearest Game Hub on the same row and defaults media control.
 """
 
 import os
@@ -48,7 +48,23 @@ class TeamScoreAction(ActionBase):
         super().__init__(*args, **kwargs)
         self._side_row: Adw.ComboRow | None = None
 
+    def _ensure_media_control(self):
+        try:
+            input_state = self.get_state()
+            if input_state and hasattr(input_state, "action_permission_manager"):
+                pm = input_state.action_permission_manager
+                curr_idx = pm.get_image_control_index()
+                own_idx = self.get_own_action_index()
+                if own_idx is not None and (curr_idx is None or curr_idx != own_idx):
+                    state_dict = pm.get_state_dict()
+                    actions = state_dict.get("actions", [])
+                    if curr_idx is None or len(actions) <= 1:
+                        pm.set_image_control_index(own_idx, reload_pages=False, reload_self=False)
+        except Exception:
+            pass
+
     def on_ready(self):
+        self._ensure_media_control()
         self.plugin_base.sports_service.register_score_action(id(self))
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
         self.update_display()
@@ -111,6 +127,8 @@ class TeamScoreAction(ActionBase):
 
     # --- Canvas Rendering with Pillow ---
     def update_display(self):
+        self._ensure_media_control()
+
         state, team = self._resolve_team_and_state()
 
         img = Image.new("RGBA", (100, 100), (22, 24, 30, 255))

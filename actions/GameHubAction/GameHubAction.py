@@ -62,7 +62,24 @@ class GameHubAction(ActionBase):
         self._current_team_list: list[dict] = []
         self._is_updating_ui: bool = False
 
+    def _ensure_media_control(self):
+        try:
+            input_state = self.get_state()
+            if input_state and hasattr(input_state, "action_permission_manager"):
+                pm = input_state.action_permission_manager
+                curr_idx = pm.get_image_control_index()
+                own_idx = self.get_own_action_index()
+                if own_idx is not None and (curr_idx is None or curr_idx != own_idx):
+                    state_dict = pm.get_state_dict()
+                    actions = state_dict.get("actions", [])
+                    if curr_idx is None or len(actions) <= 1:
+                        pm.set_image_control_index(own_idx, reload_pages=False, reload_self=False)
+        except Exception:
+            pass
+
     def on_ready(self):
+        self._ensure_media_control()
+
         settings = self.get_settings()
         league = settings.get("league", "NFL")
         team_id = settings.get("team_id", "")
@@ -246,6 +263,8 @@ class GameHubAction(ActionBase):
 
     # --- Canvas Rendering with Pillow ---
     def update_display(self):
+        self._ensure_media_control()
+
         settings = self.get_settings()
         league = settings.get("league", "NFL")
         team_id = str(settings.get("team_id", ""))
