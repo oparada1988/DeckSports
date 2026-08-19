@@ -144,6 +144,9 @@ class SportsService:
         # Origin page memory for return buttons: deck_id -> page_obj_or_path
         self.origin_pages: dict[int, str] = {}
 
+        from .CelebrationManager import CelebrationManager
+        self.celebration_manager = CelebrationManager(self)
+
     def set_active_dashboard_target(self, league: str, team_id: str):
         with self._lock:
             self.active_dashboard_league = league

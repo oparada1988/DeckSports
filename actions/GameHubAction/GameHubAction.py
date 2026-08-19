@@ -272,7 +272,38 @@ class GameHubAction(ActionBase):
         self._tap_row.connect("notify::selected", self._on_tap_mode_changed)
         rows.append(self._tap_row)
 
+        # Test Celebration Row
+        test_row = Adw.ActionRow(
+            title="Score Celebration Preview",
+            subtitle="Trigger a 3-second full-deck animation for followed team"
+        )
+        test_btn = Gtk.Button(label="Play Animation")
+        test_btn.set_valign(Gtk.Align.CENTER)
+        test_btn.connect("clicked", self._on_test_celebration_clicked)
+        test_row.add_suffix(test_btn)
+        rows.append(test_row)
+
         return rows
+
+    def _on_test_celebration_clicked(self, _btn):
+        settings = self.get_settings()
+        league = settings.get("league", "NFL")
+        team_id = str(settings.get("team_id", ""))
+        state = self.plugin_base.sports_service.get_game_state(league, team_id)
+        team = state.followed_team if state.followed_team.name else state.home_team
+        team_name = team.name if team.name else "Cowboys"
+        team_abbrev = team.abbreviation if team.abbreviation else "DAL"
+        p_color = team.color if team.color else (0, 53, 148, 255)
+        alt_color = team.alternate_color if team.alternate_color else (200, 205, 215, 255)
+
+        if hasattr(self.plugin_base.sports_service, "celebration_manager"):
+            self.plugin_base.sports_service.celebration_manager.trigger(
+                league_key=league,
+                team_name=team_name,
+                team_abbrev=team_abbrev,
+                primary_color=p_color,
+                alt_color=alt_color
+            )
 
     def _on_tap_mode_changed(self, row, _pspec):
         idx = row.get_selected()

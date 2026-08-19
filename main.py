@@ -23,6 +23,7 @@ try:
     from .actions.SituationAction.SituationAction import SituationAction
     from .actions.TeamStatsCompareAction.TeamStatsCompareAction import TeamStatsCompareAction
     from .actions.ScoringSummaryAction.ScoringSummaryAction import ScoringSummaryAction
+    from .actions.CelebrationTestAction.CelebrationTestAction import CelebrationTestAction
 except (ImportError, ValueError):
     from backend.SportsService import SportsService
     from actions.GameHubAction.GameHubAction import GameHubAction
@@ -33,6 +34,7 @@ except (ImportError, ValueError):
     from actions.SituationAction.SituationAction import SituationAction
     from actions.TeamStatsCompareAction.TeamStatsCompareAction import TeamStatsCompareAction
     from actions.ScoringSummaryAction.ScoringSummaryAction import ScoringSummaryAction
+    from actions.CelebrationTestAction.CelebrationTestAction import CelebrationTestAction
 
 class DeckSports(PluginBase):
     def __init__(self):
@@ -154,7 +156,19 @@ class DeckSports(PluginBase):
                 Input.Touchscreen: ActionInputSupport.UNTESTED,
             }
         )
-        self.add_action_holder(self.scoring_holder)
+        # 9. Register CelebrationTestAction (Test Trigger for Full-Deck Animation)
+        self.celebration_test_holder = ActionHolder(
+            plugin_base=self,
+            action_base=CelebrationTestAction,
+            action_id_suffix="CelebrationTestAction",
+            action_name="Test Score Celebration",
+            action_support={
+                Input.Key: ActionInputSupport.SUPPORTED,
+                Input.Dial: ActionInputSupport.UNSUPPORTED,
+                Input.Touchscreen: ActionInputSupport.UNTESTED,
+            }
+        )
+        self.add_action_holder(self.celebration_test_holder)
 
         # Group sub-actions inside a clean, collapsed folder in the sidebar
         self.dashboard_group = ActionHolderGroup(
@@ -165,7 +179,8 @@ class DeckSports(PluginBase):
                 self.leader_holder,
                 self.situation_holder,
                 self.stats_holder,
-                self.scoring_holder
+                self.scoring_holder,
+                self.celebration_test_holder
             ]
         )
         self.add_action_holder_group(self.dashboard_group)
