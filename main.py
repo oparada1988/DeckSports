@@ -24,7 +24,7 @@ class DeckSports(PluginBase):
             plugin_base=self,
             action_base=GameHubAction,
             action_id_suffix="GameHubAction",
-            action_name="Game Hub & Clock",
+            action_name="Game Hub / Clock",
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -38,7 +38,7 @@ class DeckSports(PluginBase):
             plugin_base=self,
             action_base=TeamScoreAction,
             action_id_suffix="TeamScoreAction",
-            action_name="Team Score & Logo",
+            action_name="Team Score / Logo",
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,

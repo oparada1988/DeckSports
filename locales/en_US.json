@@ -1,5 +1,5 @@
 {
     "plugin.name": "DeckSports",
-    "actions.game-hub.name": "Game Hub & Clock",
-    "actions.team-score.name": "Team Score & Logo"
+    "actions.game-hub.name": "Game Hub / Clock",
+    "actions.team-score.name": "Team Score / Logo"
 }
