@@ -84,6 +84,9 @@ class GameHubAction(ActionBase):
     def on_ready(self):
         self._ensure_media_control()
 
+        if hasattr(self.plugin_base, "_auto_provision_pages"):
+            self.plugin_base._auto_provision_pages()
+
         settings = self.get_settings()
         league = settings.get("league", "NFL")
         team_id = settings.get("team_id", "")

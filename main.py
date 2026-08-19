@@ -173,13 +173,73 @@ class DeckSports(PluginBase):
             plugin_dir = os.path.dirname(os.path.abspath(__file__))
             bundled_pages_dir = os.path.join(plugin_dir, "pages")
 
-            if os.path.isdir(bundled_pages_dir):
-                for filename in os.listdir(bundled_pages_dir):
-                    if filename.endswith(".json"):
-                        src_path = os.path.join(bundled_pages_dir, filename)
-                        dst_path = os.path.join(pages_dir, filename)
-                        if not os.path.exists(dst_path):
-                            shutil.copy2(src_path, dst_path)
+            if not os.path.isdir(bundled_pages_dir):
+                return
+
+            # Determine connected hardware models
+            needs_xl = False
+            needs_mk2 = False
+
+            controllers = []
+            if hasattr(gl, "deck_manager") and getattr(gl.deck_manager, "deck_controller", None):
+                controllers = gl.deck_manager.deck_controller
+
+            if controllers:
+                for c in controllers:
+                    key_count = 0
+                    if hasattr(c, "deck") and hasattr(c.deck, "key_count"):
+                        try:
+                            key_count = c.deck.key_count()
+                        except Exception:
+                            pass
+                    elif hasattr(c, "inputs") and Input.Key in c.inputs:
+                        key_count = len(c.inputs[Input.Key])
+
+                    if key_count >= 32:
+                        needs_xl = True
+                    elif key_count == 15:
+                        needs_mk2 = True
+                    else:
+                        # Fallback for standard 15-key decks
+                        needs_mk2 = True
+            else:
+                # Early initialization before decks connect: check deck settings files
+                deck_settings_dir = os.path.join(gl.DATA_PATH, "settings", "decks")
+                if os.path.isdir(deck_settings_dir):
+                    deck_files = [f for f in os.listdir(deck_settings_dir) if f.endswith(".json")]
+                    # If user has only 1 deck configured or decks present, check for XL serials or sizes
+                    # Default: allow provision when actions initialize
+                    needs_xl = True
+                    needs_mk2 = True
+                else:
+                    needs_xl = True
+                    needs_mk2 = True
+
+            # 1. Provision XL template if needed
+            src_xl = os.path.join(bundled_pages_dir, "DeckSports_GameHub_XL.json")
+            dst_xl = os.path.join(pages_dir, "DeckSports_GameHub_XL.json")
+            if needs_xl and os.path.isfile(src_xl) and not os.path.exists(dst_xl):
+                shutil.copy2(src_xl, dst_xl)
+
+            # 2. Provision MK2 template if needed
+            src_mk2 = os.path.join(bundled_pages_dir, "DeckSports_GameHub_MK2.json")
+            dst_mk2 = os.path.join(pages_dir, "DeckSports_GameHub_MK2.json")
+            if needs_mk2 and os.path.isfile(src_mk2) and not os.path.exists(dst_mk2):
+                shutil.copy2(src_mk2, dst_mk2)
+
+            # 3. If user has only an XL, remove any unneeded MK2 template
+            if controllers and needs_xl and not needs_mk2:
+                if os.path.exists(dst_mk2):
+                    try:
+                        os.remove(dst_mk2)
+                    except Exception:
+                        pass
+            elif controllers and needs_mk2 and not needs_xl:
+                if os.path.exists(dst_xl):
+                    try:
+                        os.remove(dst_xl)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
