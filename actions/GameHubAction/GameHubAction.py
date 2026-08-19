@@ -4,6 +4,7 @@ Middle master action for team configuration, game schedule, clock, and possessio
 """
 
 import os
+import globals as gl
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -11,6 +12,7 @@ from gi.repository import Gtk, Adw, GLib
 from PIL import Image, ImageDraw, ImageFont
 
 from src.backend.PluginManager.ActionBase import ActionBase
+from src.backend.DeckManagement.InputIdentifier import Input
 try:
     from ...backend.Leagues import LEAGUES, LEAGUE_KEYS
     from ...backend.SportsService import GameState
