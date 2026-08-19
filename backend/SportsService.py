@@ -87,6 +87,14 @@ class SportsService:
         self._refresh_seconds: int = 15
         self._timer_id: int | None = None
         self._is_fetching: bool = False
+        self.hub_coords: tuple[int, int] | None = None
+
+    def set_hub_coords(self, coords: tuple[int, int] | None):
+        if coords and isinstance(coords, (list, tuple)) and len(coords) >= 2:
+            self.hub_coords = (coords[0], coords[1])
+        else:
+            self.hub_coords = None
+        self.notify_listeners()
 
     def add_listener(self, callback: Callable[[GameState], None]):
         with self._lock:

@@ -3,6 +3,7 @@ DeckSports GameHubAction
 Middle master action for team configuration, game schedule, clock, and possession indicator.
 """
 
+import os
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -26,6 +27,29 @@ DISPLAY_MODES = [
     "Always My Team on Left"
 ]
 
+def get_bundled_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    bundled_font = os.path.join(plugin_dir, "assets", "fonts", "ScoreFont-Bold.ttf")
+    if os.path.exists(bundled_font):
+        try:
+            return ImageFont.truetype(bundled_font, size)
+        except Exception:
+            pass
+
+    font_candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+    ]
+    for p in font_candidates:
+        if os.path.exists(p):
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
+    return ImageFont.load_default()
+
 class GameHubAction(ActionBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -40,6 +64,8 @@ class GameHubAction(ActionBase):
 
     def on_ready(self):
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
+        coords = getattr(self.input_ident, "coords", None)
+        self.plugin_base.sports_service.set_hub_coords(coords)
         self._sync_config_to_service()
         self.update_display()
 
@@ -205,65 +231,86 @@ class GameHubAction(ActionBase):
 
     # --- Canvas Rendering with Pillow ---
     def update_display(self):
+        coords = getattr(self.input_ident, "coords", None)
+        self.plugin_base.sports_service.set_hub_coords(coords)
+
         state = self.plugin_base.sports_service.active_game_state
 
         img = Image.new("RGBA", (100, 100), (20, 22, 28, 255))
         draw = ImageDraw.Draw(img)
 
         # Header background banner
-        draw.rectangle([(0, 0), (100, 30)], fill=(32, 35, 45, 255))
-        draw.line([(0, 30), (100, 30)], fill=(55, 60, 75, 255), width=1)
+        draw.rectangle([(0, 0), (100, 28)], fill=(32, 35, 45, 255))
+        draw.line([(0, 28), (100, 28)], fill=(55, 60, 75, 255), width=1)
 
         # 1. League Logo (Centered in header)
         league_logo = self.plugin_base.sports_service.get_league_logo(state.league_key, max_size=(24, 24))
         if league_logo:
             lx = (100 - league_logo.width) // 2
-            ly = (30 - league_logo.height) // 2
+            ly = (28 - league_logo.height) // 2
             img.alpha_composite(league_logo, (lx, ly))
         else:
-            # Fallback text
-            draw.text((50, 15), state.league_key, fill=(200, 205, 215, 255), anchor="mm")
+            font_hdr = get_bundled_font(12)
+            draw.text((50, 14), state.league_key, fill=(200, 205, 215, 255), anchor="mm", font=font_hdr)
 
         # 2. Body State Rendering
         if state.status_state == "in":
             # LIVE GAME STATE
-            # Period and Clock in Center
             clock_text = state.clock if state.clock else state.period_text
             period_str = f"Q{state.period}" if state.period and state.league_key in ("NFL", "NBA", "UFL") else state.period_text
 
-            draw.text((50, 46), period_str, fill=(255, 210, 50, 255), anchor="mm")
-            draw.text((50, 62), clock_text, fill=(255, 255, 255, 255), anchor="mm")
+            font_period = get_bundled_font(13)
+            font_clock = get_bundled_font(15)
+            draw.text((50, 43), period_str, fill=(255, 210, 50, 255), anchor="mm", font=font_period)
+            draw.text((50, 60), clock_text, fill=(255, 255, 255, 255), anchor="mm", font=font_clock)
 
             # Possession Arrow at Bottom
+            font_poss = get_bundled_font(11)
             if state.possession_side == "away":
-                draw.rectangle([(8, 77), (92, 94)], fill=(180, 40, 40, 255))
-                draw.text((50, 85), "◀ BALL", fill=(255, 255, 255, 255), anchor="mm")
+                draw.rectangle([(8, 76), (92, 94)], fill=(180, 40, 40, 255))
+                draw.text((50, 85), "◀ BALL", fill=(255, 255, 255, 255), anchor="mm", font=font_poss)
             elif state.possession_side == "home":
-                draw.rectangle([(8, 77), (92, 94)], fill=(40, 120, 180, 255))
-                draw.text((50, 85), "BALL ▶", fill=(255, 255, 255, 255), anchor="mm")
+                draw.rectangle([(8, 76), (92, 94)], fill=(40, 120, 180, 255))
+                draw.text((50, 85), "BALL ▶", fill=(255, 255, 255, 255), anchor="mm", font=font_poss)
             elif state.down_distance:
-                draw.text((50, 85), state.down_distance[:12], fill=(180, 185, 195, 255), anchor="mm")
+                draw.text((50, 85), state.down_distance[:12], fill=(180, 185, 195, 255), anchor="mm", font=font_poss)
             else:
-                draw.text((50, 85), "LIVE", fill=(100, 255, 120, 255), anchor="mm")
+                draw.text((50, 85), "LIVE", fill=(100, 255, 120, 255), anchor="mm", font=font_poss)
 
         elif state.status_state == "pre":
             # UPCOMING GAME STATE
-            draw.text((50, 45), "NEXT GAME", fill=(140, 150, 170, 255), anchor="mm")
-            draw.text((50, 62), state.next_game_date, fill=(255, 255, 255, 255), anchor="mm")
-            draw.text((50, 80), state.next_game_time, fill=(255, 210, 60, 255), anchor="mm")
+            font_sub = get_bundled_font(11)
+            font_main = get_bundled_font(13)
+            draw.text((50, 42), "NEXT GAME", fill=(140, 150, 170, 255), anchor="mm", font=font_sub)
+            draw.text((50, 60), state.next_game_date, fill=(255, 255, 255, 255), anchor="mm", font=font_main)
+            draw.text((50, 79), state.next_game_time, fill=(255, 210, 60, 255), anchor="mm", font=font_sub)
 
         elif state.status_state == "post":
             # FINAL / POST GAME
-            draw.text((50, 45), "FINAL", fill=(255, 75, 75, 255), anchor="mm")
-            # Show summary
+            font_status = get_bundled_font(13)
+            font_score = get_bundled_font(15)
+            font_det = get_bundled_font(11)
+
+            draw.text((50, 41), "FINAL", fill=(255, 75, 75, 255), anchor="mm", font=font_status)
+
+            # Mini team logos flanking the score if available
+            away_logo = self.plugin_base.sports_service.get_image(state.away_team.logo_url, max_size=(18, 18))
+            if away_logo:
+                img.alpha_composite(away_logo, (10, 51))
+
+            home_logo = self.plugin_base.sports_service.get_image(state.home_team.logo_url, max_size=(18, 18))
+            if home_logo:
+                img.alpha_composite(home_logo, (72, 51))
+
             summary = f"{state.away_team.score} - {state.home_team.score}"
-            draw.text((50, 64), summary, fill=(255, 255, 255, 255), anchor="mm")
-            draw.text((50, 82), state.status_detail[:14], fill=(170, 175, 185, 255), anchor="mm")
+            draw.text((50, 60), summary, fill=(255, 255, 255, 255), anchor="mm", font=font_score)
+            draw.text((50, 81), state.status_detail[:14], fill=(170, 175, 185, 255), anchor="mm", font=font_det)
 
         else:
             # OFF-SEASON / NO GAME
-            draw.text((50, 52), "SCHEDULE", fill=(140, 150, 170, 255), anchor="mm")
-            draw.text((50, 72), "STANDBY", fill=(200, 205, 215, 255), anchor="mm")
+            font_lbl = get_bundled_font(12)
+            draw.text((50, 52), "SCHEDULE", fill=(140, 150, 170, 255), anchor="mm", font=font_lbl)
+            draw.text((50, 72), "STANDBY", fill=(200, 205, 215, 255), anchor="mm", font=font_lbl)
 
         # Outer border
         draw.rectangle([(0, 0), (99, 99)], outline=(60, 65, 80, 255), width=1)
