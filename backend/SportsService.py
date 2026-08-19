@@ -198,13 +198,6 @@ class SportsService:
         """
         my_x = my_coords[0] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 1) else 0
         my_y = my_coords[1] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 2) else 0
-        auto_side = "away" if my_x <= 3 else "home"
-
-        # If a dashboard target is active, strictly bind all dashboard tiles to this target
-        dash_target = self.get_active_dashboard_target()
-        if dash_target:
-            league, team_id = dash_target
-            return (league, team_id, auto_side)
 
         with self._lock:
             # Filter out hubs from inactive background pages
@@ -213,45 +206,43 @@ class SportsService:
                 if (h.get("action") is None or getattr(h.get("action"), "get_is_present", lambda: True)())
             ]
 
-        if not present_hubs:
-            return ("NFL", "", auto_side)
-
-        if not my_coords or not isinstance(my_coords, (list, tuple)) or len(my_coords) < 2:
-            first = present_hubs[0]
-            return (first["league"], first["team_id"], auto_side)
-
         # 1. Prefer hubs on the exact same row (my_y == hub_y)
         same_row_hubs = [h for h in present_hubs if h["coords"] and h["coords"][1] == my_y]
-
         candidates = same_row_hubs if same_row_hubs else [h for h in present_hubs if h["coords"]]
-        if not candidates:
-            first = present_hubs[0]
-            return (first["league"], first["team_id"], auto_side)
 
-        # Find closest candidate horizontally/Euclidean
         best_hub = None
-        min_dist = float("inf")
-        for h in candidates:
-            hx, hy = h["coords"][0], h["coords"][1]
-            dist = math.hypot(my_x - hx, (my_y - hy) * 2)
-            if dist < min_dist:
-                min_dist = dist
-                best_hub = h
-
-        if not best_hub:
+        if candidates:
+            # Find closest candidate horizontally/Euclidean
+            min_dist = float("inf")
+            for h in candidates:
+                hx, hy = h["coords"][0], h["coords"][1]
+                dist = math.hypot(my_x - hx, (my_y - hy) * 2)
+                if dist < min_dist:
+                    min_dist = dist
+                    best_hub = h
+        elif present_hubs:
             best_hub = present_hubs[0]
 
-        hub_x = best_hub["coords"][0] if best_hub["coords"] else 0
-        display_mode = best_hub.get("display_mode", 0)
+        hub_x = best_hub["coords"][0] if (best_hub and best_hub.get("coords")) else 3
+        display_mode = best_hub.get("display_mode", 0) if best_hub else 0
 
         if display_mode == 1:
             # Always My Team on Left
             side = "followed" if my_x < hub_x else "opponent"
         else:
             # Broadcast mode: Away Left, Home Right
-            side = "home" if my_x > hub_x else "away"
+            side = "away" if my_x < hub_x else "home"
 
-        return (best_hub["league"], best_hub["team_id"], side)
+        # If a dashboard target is active on a Game Hub page, prioritize the target's league & team
+        dash_target = self.get_active_dashboard_target()
+        if dash_target:
+            league, team_id = dash_target
+            return (league, team_id, side)
+
+        if best_hub:
+            return (best_hub["league"], best_hub["team_id"], side)
+
+        return ("NFL", "", side)
 
     # --- Listener Management ---
     def add_listener(self, callback: Callable[[str, str, GameState], None]):
