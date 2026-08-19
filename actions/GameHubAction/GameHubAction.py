@@ -164,6 +164,22 @@ class GameHubAction(ActionBase):
         settings = self.get_settings()
         league = settings.get("league", "NFL")
         team_id = str(settings.get("team_id", ""))
+        if league and team_id:
+            self.plugin_base.sports_service.set_active_dashboard_target(league, team_id)
+            self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
+            self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=True)
+
+    def event_callback(self, event, data=None):
+        super().event_callback(event, data)
+        if event == Input.Key.Events.SHORT_UP:
+            self.on_short_tap()
+        elif event == Input.Key.Events.HOLD_START:
+            self.on_key_hold()
+
+    def on_short_tap(self):
+        settings = self.get_settings()
+        league = settings.get("league", "NFL")
+        team_id = str(settings.get("team_id", ""))
         tap_mode = settings.get("tap_mode", 0)
 
         if league and team_id:
@@ -211,11 +227,6 @@ class GameHubAction(ActionBase):
                 page_obj = gl.page_manager.get_page(user_page_path, deck_controller=controller)
                 if page_obj:
                     controller.load_page(page_obj)
-
-    def event_callback(self, event, data=None):
-        super().event_callback(event, data)
-        if event == Input.Key.Events.HOLD_START:
-            self.on_key_hold()
 
     def on_key_hold(self):
         settings = self.get_settings()
