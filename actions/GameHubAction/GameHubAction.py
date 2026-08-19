@@ -1,4 +1,6 @@
 import os
+import webbrowser
+import threading
 import globals as gl
 from functools import lru_cache
 import gi
@@ -28,6 +30,24 @@ DISPLAY_MODES = [
     "Broadcast (Away Left / Home Right)",
     "Always My Team on Left"
 ]
+
+HOLD_DESTINATIONS = [
+    ("ESPN Gamecast / Match Center (Default)", "espn"),
+    ("Official League Match Center", "league"),
+    ("Custom Web URL", "custom")
+]
+
+LEAGUE_URLS = {
+    "NFL": "https://www.nfl.com/scores",
+    "NBA": "https://www.nba.com/games",
+    "MLB": "https://www.mlb.com/scores",
+    "NHL": "https://www.nhl.com/scores",
+    "MLS": "https://www.mlssoccer.com/schedule/matches",
+    "UFL": "https://www.theufl.com/schedule",
+    "WNBA": "https://www.wnba.com/scores",
+    "NCAA_FB": "https://www.ncaa.com/scoreboard/football/fbs",
+    "NCAA_BK": "https://www.ncaa.com/scoreboard/basketball-men/d1"
+}
 
 @lru_cache(maxsize=32)
 def get_bundled_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -192,6 +212,45 @@ class GameHubAction(ActionBase):
                 if page_obj:
                     controller.load_page(page_obj)
 
+    def event_callback(self, event, data=None):
+        super().event_callback(event, data)
+        if event == Input.Key.Events.HOLD_START:
+            self.on_key_hold()
+
+    def on_key_hold(self):
+        settings = self.get_settings()
+        coords = getattr(self.input_ident, "coords", None)
+        hub_league, hub_team_id, _ = self.plugin_base.sports_service.get_nearest_hub_target(coords)
+        league = settings.get("league") or hub_league
+        team_id = str(settings.get("team_id") or hub_team_id)
+        hold_mode = settings.get("hold_mode", "espn")
+        custom_url = settings.get("custom_url", "").strip()
+
+        target_url = "https://www.espn.com"
+
+        if hold_mode == "custom" and custom_url:
+            target_url = custom_url if custom_url.startswith(("http://", "https://")) else f"https://{custom_url}"
+        elif hold_mode == "league":
+            target_url = LEAGUE_URLS.get(league, "https://www.espn.com")
+        else:
+            # ESPN Gamecast / Match Center
+            cfg = LEAGUES.get(league)
+            sport_slug = cfg.sport_slug if cfg else "sports"
+            league_slug = cfg.league_slug if cfg else ""
+            state = self.plugin_base.sports_service.get_game_state(league, team_id)
+
+            if state and state.event_id:
+                if league in ("MLS",):
+                    target_url = f"https://www.espn.com/soccer/match/_/gameId/{state.event_id}"
+                else:
+                    target_url = f"https://www.espn.com/{sport_slug}/game/_/gameId/{state.event_id}"
+            elif team_id:
+                target_url = f"https://www.espn.com/{sport_slug}/team/_/id/{team_id}"
+            else:
+                target_url = f"https://www.espn.com/{sport_slug}/{league_slug}"
+
+        threading.Thread(target=webbrowser.open, args=(target_url,), daemon=True).start()
+
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:
         rows = []
@@ -273,7 +332,31 @@ class GameHubAction(ActionBase):
         self._tap_row.connect("notify::selected", self._on_tap_mode_changed)
         rows.append(self._tap_row)
 
-        # 6. Score Celebration On/Off Toggle
+        # 6. Key Hold Action (Web Destination)
+        hold_model = Gtk.StringList()
+        for label, _ in HOLD_DESTINATIONS:
+            hold_model.append(label)
+
+        self._hold_row = Adw.ComboRow(
+            title="Key Hold Webcast Action",
+            subtitle="Website opened when key is held for > 500ms",
+            model=hold_model
+        )
+        saved_hold = settings.get("hold_mode", "espn")
+        hold_idx = next((i for i, (_, m) in enumerate(HOLD_DESTINATIONS) if m == saved_hold), 0)
+        self._hold_row.set_selected(hold_idx)
+        self._hold_row.connect("notify::selected", self._on_hold_mode_changed)
+        rows.append(self._hold_row)
+
+        self._custom_url_row = Adw.EntryRow(
+            title="Custom Web URL",
+            text=settings.get("custom_url", "")
+        )
+        self._custom_url_row.set_visible(saved_hold == "custom")
+        self._custom_url_row.connect("changed", self._on_custom_url_changed)
+        rows.append(self._custom_url_row)
+
+        # 7. Score Celebration On/Off Toggle
         self._celebration_row = Adw.SwitchRow(
             title="Score Celebration Animations",
             subtitle="Play full-deck celebration when followed team scores (Game Hub page only)"
@@ -282,7 +365,7 @@ class GameHubAction(ActionBase):
         self._celebration_row.connect("notify::active", self._on_celebration_toggled)
         rows.append(self._celebration_row)
 
-        # 7. Test Celebration Row
+        # 8. Test Celebration Row
         test_row = Adw.ActionRow(
             title="Score Celebration Preview",
             subtitle="Trigger a 3-second full-deck animation for followed team"
@@ -294,6 +377,21 @@ class GameHubAction(ActionBase):
         rows.append(test_row)
 
         return rows
+
+    def _on_hold_mode_changed(self, row, _pspec):
+        idx = row.get_selected()
+        if 0 <= idx < len(HOLD_DESTINATIONS):
+            _, mode_val = HOLD_DESTINATIONS[idx]
+            settings = self.get_settings()
+            settings["hold_mode"] = mode_val
+            self.set_settings(settings)
+            if hasattr(self, "_custom_url_row") and self._custom_url_row:
+                self._custom_url_row.set_visible(mode_val == "custom")
+
+    def _on_custom_url_changed(self, row):
+        settings = self.get_settings()
+        settings["custom_url"] = row.get_text().strip()
+        self.set_settings(settings)
 
     def _on_celebration_toggled(self, row, _pspec):
         settings = self.get_settings()
