@@ -127,6 +127,15 @@ class GameHubAction(ActionBase):
         if league and team_id:
             self.plugin_base.sports_service.fetch_async(league, team_id, force=False, refresh_seconds=refresh)
 
+    def get_deck_controller_to_use(self):
+        if getattr(self, "deck_controller", None):
+            return self.deck_controller
+        if hasattr(gl, "deck_manager") and getattr(gl.deck_manager, "deck_controller", None):
+            controllers = gl.deck_manager.deck_controller
+            if controllers:
+                return controllers[0]
+        return None
+
     def on_key_down(self):
         settings = self.get_settings()
         league = settings.get("league", "NFL")
@@ -139,41 +148,39 @@ class GameHubAction(ActionBase):
 
         if tap_mode == 0:
             # Open interactive Game Hub Dashboard
-            controller = getattr(self, "deck_controller", None)
-            if not controller and hasattr(gl, "deck_manager") and getattr(gl.deck_manager, "deck_controller", None):
-                controllers = gl.deck_manager.deck_controller
-                if controllers:
-                    controller = controllers[0]
+            controller = self.get_deck_controller_to_use()
+            if not controller:
+                return
 
-            if controller:
-                key_count = 15
-                if hasattr(controller, "deck") and hasattr(controller.deck, "key_count"):
-                    try:
-                        key_count = controller.deck.key_count()
-                    except Exception:
-                        pass
-                elif hasattr(controller, "inputs") and Input.Key in controller.inputs:
-                    key_count = len(controller.inputs[Input.Key])
+            key_count = 15
+            if hasattr(controller, "deck") and hasattr(controller.deck, "key_count"):
+                try:
+                    key_count = controller.deck.key_count()
+                except Exception:
+                    pass
+            elif hasattr(controller, "inputs") and Input.Key in controller.inputs:
+                key_count = len(controller.inputs[Input.Key])
 
-                is_xl = (key_count >= 32)
-                page_filename = "DeckSports_GameHub_XL.json" if is_xl else "DeckSports_GameHub_MK2.json"
-                user_page_path = os.path.join(gl.DATA_PATH, "pages", page_filename)
+            is_xl = (key_count >= 32)
+            page_filename = "DeckSports_GameHub_XL.json" if is_xl else "DeckSports_GameHub_MK2.json"
+            user_page_path = os.path.join(gl.DATA_PATH, "pages", page_filename)
 
-                if not os.path.isfile(user_page_path):
-                    plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-                    bundled_path = os.path.join(plugin_dir, "pages", page_filename)
-                    if os.path.isfile(bundled_path):
-                        user_page_path = bundled_path
+            if not os.path.isfile(user_page_path):
+                plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+                bundled_path = os.path.join(plugin_dir, "pages", page_filename)
+                if os.path.isfile(bundled_path):
+                    user_page_path = bundled_path
 
-                if os.path.isfile(user_page_path):
-                    if controller.active_page is not None and hasattr(controller.active_page, "json_path"):
-                        curr_path = controller.active_page.json_path
-                        if curr_path and not ("GameHub" in os.path.basename(curr_path)):
-                            self.plugin_base.sports_service.set_origin_page(id(controller), curr_path)
+            if os.path.isfile(user_page_path):
+                origin = getattr(self, "page", None) or getattr(controller, "active_page", None)
+                if origin is not None:
+                    json_path = getattr(origin, "json_path", "")
+                    if not ("GameHub" in os.path.basename(str(json_path))):
+                        self.plugin_base.sports_service.set_origin_page(id(controller), origin)
 
-                    page_obj = gl.page_manager.get_page(user_page_path, deck_controller=controller)
-                    if page_obj:
-                        controller.load_page(page_obj)
+                page_obj = gl.page_manager.get_page(user_page_path, deck_controller=controller)
+                if page_obj:
+                    controller.load_page(page_obj)
 
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:

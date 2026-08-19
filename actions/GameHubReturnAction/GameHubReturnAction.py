@@ -55,51 +55,62 @@ class GameHubReturnAction(ActionBase):
         except Exception:
             pass
 
+    def get_deck_controller_to_use(self):
+        if getattr(self, "deck_controller", None):
+            return self.deck_controller
+        if hasattr(gl, "deck_manager") and getattr(gl.deck_manager, "deck_controller", None):
+            controllers = gl.deck_manager.deck_controller
+            if controllers:
+                return controllers[0]
+        return None
+
     def on_ready(self):
         self._ensure_media_control()
         self.update_display()
 
     def on_key_down(self):
-        controller = getattr(self, "deck_controller", None)
-        if not controller and hasattr(gl, "deck_manager") and getattr(gl.deck_manager, "deck_controller", None):
-            controllers = gl.deck_manager.deck_controller
-            if controllers:
-                controller = controllers[0]
-
+        controller = self.get_deck_controller_to_use()
         if not controller:
             return
 
-        origin_path = self.plugin_base.sports_service.get_origin_page(id(controller))
+        origin = self.plugin_base.sports_service.get_origin_page(id(controller))
+        if origin:
+            if hasattr(origin, "get_name") and hasattr(origin, "json_path"):
+                controller.load_page(origin)
+                return
+            elif isinstance(origin, str) and os.path.isfile(origin):
+                page_obj = gl.page_manager.get_page(origin, deck_controller=controller)
+                if page_obj:
+                    controller.load_page(page_obj)
+                    return
 
-        target_path = None
-        if origin_path and os.path.isfile(origin_path):
-            target_path = origin_path
-        else:
-            serial = ""
-            if hasattr(controller, "deck") and hasattr(controller.deck, "get_serial_number"):
-                try:
-                    serial = controller.deck.get_serial_number()
-                except Exception:
-                    pass
-            elif hasattr(controller, "serial_number"):
-                try:
-                    serial = controller.serial_number() if callable(controller.serial_number) else str(controller.serial_number)
-                except Exception:
-                    pass
+        # Fallback to default page for this deck
+        serial = ""
+        if hasattr(controller, "deck") and hasattr(controller.deck, "get_serial_number"):
+            try:
+                serial = controller.deck.get_serial_number()
+            except Exception:
+                pass
+        elif hasattr(controller, "serial_number"):
+            try:
+                serial = controller.serial_number() if callable(controller.serial_number) else str(controller.serial_number)
+            except Exception:
+                pass
 
-            default_page = gl.page_manager.get_default_page(serial) if serial else None
-            if default_page and os.path.isfile(default_page):
-                target_path = default_page
-            else:
-                for p in gl.page_manager.get_pages():
-                    if os.path.isfile(p) and not ("GameHub" in os.path.basename(p)):
-                        target_path = p
-                        break
-
-        if target_path:
-            page_obj = gl.page_manager.get_page(target_path, deck_controller=controller)
+        default_page = gl.page_manager.get_default_page(serial) if serial else None
+        if default_page and os.path.isfile(default_page):
+            page_obj = gl.page_manager.get_page(default_page, deck_controller=controller)
             if page_obj:
                 controller.load_page(page_obj)
+                return
+
+        # Fallback to first available non-GameHub user page
+        for p in gl.page_manager.get_pages():
+            if os.path.isfile(p) and not ("GameHub" in os.path.basename(p)):
+                page_obj = gl.page_manager.get_page(p, deck_controller=controller)
+                if page_obj:
+                    controller.load_page(page_obj)
+                    return
 
     def update_display(self):
         self._ensure_media_control()

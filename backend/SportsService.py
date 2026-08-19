@@ -359,12 +359,12 @@ class SportsService:
         return None
 
     # --- Origin Page Memory for Navigation ---
-    def set_origin_page(self, deck_id: int, page_path: str | None):
+    def set_origin_page(self, deck_id: int, page_obj_or_path):
         with self._lock:
-            if page_path:
-                self.origin_pages[deck_id] = page_path
+            if page_obj_or_path:
+                self.origin_pages[deck_id] = page_obj_or_path
 
-    def get_origin_page(self, deck_id: int) -> str | None:
+    def get_origin_page(self, deck_id: int):
         with self._lock:
             return self.origin_pages.get(deck_id)
 
