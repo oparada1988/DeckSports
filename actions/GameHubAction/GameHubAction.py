@@ -73,12 +73,12 @@ class GameHubAction(ActionBase):
         GLib.idle_add(self.update_display)
 
     def on_tick(self):
-        # Trigger background fetch check
-        self.plugin_base.sports_service.fetch_async()
+        # Throttled background fetch check
+        self.plugin_base.sports_service.fetch_async(force=False)
 
     def on_key_down(self):
         # Instant manual refresh on press
-        self.plugin_base.sports_service.fetch_async()
+        self.plugin_base.sports_service.fetch_async(force=True)
 
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:
@@ -211,7 +211,6 @@ class GameHubAction(ActionBase):
         settings = self.get_settings()
         settings["display_mode"] = idx
         self.set_settings(settings)
-        # Notify sports service listeners to re-orient sides
         self.plugin_base.sports_service.notify_listeners()
 
     def _sync_config_to_service(self):
@@ -232,9 +231,11 @@ class GameHubAction(ActionBase):
     # --- Canvas Rendering with Pillow ---
     def update_display(self):
         coords = getattr(self.input_ident, "coords", None)
-        self.plugin_base.sports_service.set_hub_coords(coords)
+        if coords and self.plugin_base.sports_service.hub_coords != coords:
+            self.plugin_base.sports_service.set_hub_coords(coords)
 
         state = self.plugin_base.sports_service.active_game_state
+        has_score_keys = self.plugin_base.sports_service.has_score_actions()
 
         img = Image.new("RGBA", (100, 100), (20, 22, 28, 255))
         draw = ImageDraw.Draw(img)
@@ -260,9 +261,9 @@ class GameHubAction(ActionBase):
             period_str = f"Q{state.period}" if state.period and state.league_key in ("NFL", "NBA", "UFL") else state.period_text
 
             font_period = get_bundled_font(13)
-            font_clock = get_bundled_font(15)
-            draw.text((50, 43), period_str, fill=(255, 210, 50, 255), anchor="mm", font=font_period)
-            draw.text((50, 60), clock_text, fill=(255, 255, 255, 255), anchor="mm", font=font_clock)
+            font_clock = get_bundled_font(16)
+            draw.text((50, 42), period_str, fill=(255, 210, 50, 255), anchor="mm", font=font_period)
+            draw.text((50, 59), clock_text, fill=(255, 255, 255, 255), anchor="mm", font=font_clock)
 
             # Possession Arrow at Bottom
             font_poss = get_bundled_font(11)
@@ -287,24 +288,30 @@ class GameHubAction(ActionBase):
 
         elif state.status_state == "post":
             # FINAL / POST GAME
-            font_status = get_bundled_font(13)
-            font_score = get_bundled_font(15)
-            font_det = get_bundled_font(11)
+            if has_score_keys:
+                # 3-BUTTON SCOREBOARD MODE: Clean, bold "FINAL" in red letters without redundant scores
+                font_final = get_bundled_font(21)
+                final_text = "FINAL / OT" if ("ot" in state.status_detail.lower() or "overtime" in state.status_detail.lower()) else "FINAL"
+                draw.text((50, 62), final_text, fill=(255, 65, 65, 255), anchor="mm", font=font_final)
+            else:
+                # STANDALONE 1-BUTTON MODE: Show status, scores, and mini logos
+                font_status = get_bundled_font(13)
+                font_score = get_bundled_font(15)
+                font_det = get_bundled_font(11)
 
-            draw.text((50, 41), "FINAL", fill=(255, 75, 75, 255), anchor="mm", font=font_status)
+                draw.text((50, 41), "FINAL", fill=(255, 75, 75, 255), anchor="mm", font=font_status)
 
-            # Mini team logos flanking the score if available
-            away_logo = self.plugin_base.sports_service.get_image(state.away_team.logo_url, max_size=(18, 18))
-            if away_logo:
-                img.alpha_composite(away_logo, (10, 51))
+                away_logo = self.plugin_base.sports_service.get_image(state.away_team.logo_url, max_size=(18, 18))
+                if away_logo:
+                    img.alpha_composite(away_logo, (10, 51))
 
-            home_logo = self.plugin_base.sports_service.get_image(state.home_team.logo_url, max_size=(18, 18))
-            if home_logo:
-                img.alpha_composite(home_logo, (72, 51))
+                home_logo = self.plugin_base.sports_service.get_image(state.home_team.logo_url, max_size=(18, 18))
+                if home_logo:
+                    img.alpha_composite(home_logo, (72, 51))
 
-            summary = f"{state.away_team.score} - {state.home_team.score}"
-            draw.text((50, 60), summary, fill=(255, 255, 255, 255), anchor="mm", font=font_score)
-            draw.text((50, 81), state.status_detail[:14], fill=(170, 175, 185, 255), anchor="mm", font=font_det)
+                summary = f"{state.away_team.score} - {state.home_team.score}"
+                draw.text((50, 60), summary, fill=(255, 255, 255, 255), anchor="mm", font=font_score)
+                draw.text((50, 81), state.status_detail[:14], fill=(170, 175, 185, 255), anchor="mm", font=font_det)
 
         else:
             # OFF-SEASON / NO GAME

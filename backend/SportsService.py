@@ -6,6 +6,7 @@ Fetches ESPN scoreboard and team data, caches assets locally, and coordinates li
 import os
 import io
 import time
+import json
 import hashlib
 import threading
 from datetime import datetime, timezone
@@ -80,20 +81,36 @@ class SportsService:
 
         self.active_game_state = GameState()
         self.listeners: list[Callable[[GameState], None]] = []
+        self.active_score_actions: set[int] = set()
         self._lock = threading.Lock()
 
         self._current_league: str = "NFL"
         self._current_team_id: str = ""
         self._refresh_seconds: int = 15
-        self._timer_id: int | None = None
+        self._last_fetch_time: float = 0.0
         self._is_fetching: bool = False
         self.hub_coords: tuple[int, int] | None = None
 
+    def register_score_action(self, action_id: int):
+        with self._lock:
+            self.active_score_actions.add(action_id)
+        self.notify_listeners()
+
+    def unregister_score_action(self, action_id: int):
+        with self._lock:
+            self.active_score_actions.discard(action_id)
+        self.notify_listeners()
+
+    def has_score_actions(self) -> bool:
+        with self._lock:
+            return len(self.active_score_actions) > 0
+
     def set_hub_coords(self, coords: tuple[int, int] | None):
-        if coords and isinstance(coords, (list, tuple)) and len(coords) >= 2:
-            self.hub_coords = (coords[0], coords[1])
-        else:
-            self.hub_coords = None
+        new_coords = (coords[0], coords[1]) if (coords and isinstance(coords, (list, tuple)) and len(coords) >= 2) else None
+        if self.hub_coords == new_coords:
+            return  # Prevent recursive notify loops
+
+        self.hub_coords = new_coords
         self.notify_listeners()
 
     def add_listener(self, callback: Callable[[GameState], None]):
@@ -116,7 +133,7 @@ class SportsService:
             except Exception as e:
                 log.error(f"Error in SportsService listener callback: {e}")
 
-    # --- Image & Logo Caching ---
+    # --- Non-Blocking Image & Logo Caching ---
     def get_image(self, url: str | None, max_size: tuple[int, int] = (80, 80)) -> Image.Image | None:
         if not url:
             return None
@@ -129,23 +146,30 @@ class SportsService:
         url_hash = hashlib.md5(url.encode()).hexdigest()
         file_path = os.path.join(self.logo_cache_dir, f"{url_hash}.png")
 
-        try:
-            if os.path.exists(file_path):
+        if os.path.exists(file_path):
+            try:
                 img = Image.open(file_path).convert("RGBA")
-            else:
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                self.image_cache[cache_key] = img
+                return img
+            except Exception:
+                pass
+
+        # If not cached on disk, fetch asynchronously without blocking the UI thread
+        def _fetch_img_bg():
+            try:
                 resp = requests.get(url, timeout=6)
                 if resp.status_code == 200:
                     img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
                     img.save(file_path, "PNG")
-                else:
-                    return None
+                    img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                    self.image_cache[cache_key] = img
+                    GLib.idle_add(self.notify_listeners)
+            except Exception:
+                pass
 
-            img.thumbnail(max_size, Image.Resampling.LANCZOS)
-            self.image_cache[cache_key] = img
-            return img
-        except Exception as e:
-            log.trace(f"Failed to fetch or process logo from {url}: {e}")
-            return None
+        threading.Thread(target=_fetch_img_bg, daemon=True).start()
+        return None
 
     def get_league_logo(self, league_key: str, max_size: tuple[int, int] = (36, 36)) -> Image.Image | None:
         cfg = LEAGUES.get(league_key)
@@ -153,11 +177,23 @@ class SportsService:
             return None
         return self.get_image(cfg.logo_url, max_size)
 
-    # --- Teams Fetching ---
+    # --- Teams Fetching with Disk Caching ---
     def get_teams(self, league_key: str) -> list[dict]:
         """Return list of dicts: [{'id': ..., 'name': ..., 'abbreviation': ..., 'logo': ..., 'color': ...}]"""
         if league_key in self.team_cache and self.team_cache[league_key]:
             return self.team_cache[league_key]
+
+        # Check disk cache
+        disk_teams_file = os.path.join(self.cache_dir, f"teams_{league_key}.json")
+        if os.path.exists(disk_teams_file):
+            try:
+                with open(disk_teams_file, "r") as f:
+                    cached_data = json.load(f)
+                    if cached_data and isinstance(cached_data, list):
+                        self.team_cache[league_key] = cached_data
+                        return cached_data
+            except Exception:
+                pass
 
         cfg = LEAGUES.get(league_key)
         if not cfg:
@@ -187,13 +223,21 @@ class SportsService:
                             })
                 team_list.sort(key=lambda x: x["name"])
                 self.team_cache[league_key] = team_list
+
+                # Save to disk
+                try:
+                    with open(disk_teams_file, "w") as f:
+                        json.dump(team_list, f)
+                except Exception:
+                    pass
+
                 return team_list
         except Exception as e:
             log.error(f"Failed to fetch team list for {league_key}: {e}")
 
         return []
 
-    # --- Live Game Data Fetching ---
+    # --- Live Game Data Fetching (Throttled & Non-Blocking) ---
     def update_config(self, league_key: str, team_id: str, refresh_seconds: int = 15):
         changed = (self._current_league != league_key) or (self._current_team_id != team_id) or (self._refresh_seconds != refresh_seconds)
         self._current_league = league_key
@@ -201,11 +245,16 @@ class SportsService:
         self._refresh_seconds = max(5, refresh_seconds)
 
         if changed:
-            self.fetch_async()
+            self.fetch_async(force=True)
 
-    def fetch_async(self):
+    def fetch_async(self, force: bool = False):
+        now = time.time()
         if self._is_fetching:
             return
+        if not force and (now - self._last_fetch_time < self._refresh_seconds):
+            return
+
+        self._last_fetch_time = now
         threading.Thread(target=self._fetch_worker, daemon=True).start()
 
     def _fetch_worker(self):
@@ -257,11 +306,17 @@ class SportsService:
         if matched_event:
             self._parse_event_into_state(matched_event, new_state)
         else:
-            # If team is not in today's scoreboard, query team schedule if available
+            # If team is not in today's scoreboard, query team schedule
             self._parse_off_game_state(new_state)
 
         with self._lock:
             self.active_game_state = new_state
+
+        # Pre-cache team logos in background
+        if new_state.away_team.logo_url:
+            self.get_image(new_state.away_team.logo_url)
+        if new_state.home_team.logo_url:
+            self.get_image(new_state.home_team.logo_url)
 
     def _parse_event_into_state(self, ev: dict, state: GameState):
         comp = ev.get("competitions", [{}])[0]

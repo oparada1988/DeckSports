@@ -48,14 +48,19 @@ class TeamScoreAction(ActionBase):
         self._side_row: Adw.ComboRow | None = None
 
     def on_ready(self):
+        self.plugin_base.sports_service.register_score_action(id(self))
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
         self.update_display()
+
+    def on_remove(self):
+        self.plugin_base.sports_service.unregister_score_action(id(self))
+        self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
 
     def on_game_state_updated(self, state: GameState):
         GLib.idle_add(self.update_display)
 
     def on_key_down(self):
-        self.plugin_base.sports_service.fetch_async()
+        self.plugin_base.sports_service.fetch_async(force=True)
 
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:
@@ -123,7 +128,7 @@ class TeamScoreAction(ActionBase):
         draw = ImageDraw.Draw(img)
 
         # 1. Header Banner with team primary color
-        header_color = team.color if team.color else (45, 50, 60, 255)
+        header_color = team.color if team.color else (45, 45, 45, 255)
         draw.rectangle([(0, 0), (100, 26)], fill=header_color)
         draw.line([(0, 26), (100, 26)], fill=(255, 255, 255, 40), width=1)
 
@@ -136,7 +141,7 @@ class TeamScoreAction(ActionBase):
         font_tag = get_bundled_font(9)
         draw.text((90, 13), tag, fill=(240, 240, 240, 210), anchor="rm", font=font_tag)
 
-        # 2. Team Logo in Center Background (Faded / Watermark style)
+        # 2. Team Logo in Center Background (Watermark style)
         if team.logo_url:
             logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(56, 56))
             if logo:
