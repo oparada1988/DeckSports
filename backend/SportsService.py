@@ -141,6 +141,9 @@ class SportsService:
         self.active_dashboard_league: str | None = None
         self.active_dashboard_team_id: str | None = None
 
+        # Origin page memory for return buttons: deck_id -> page_obj_or_path
+        self.origin_pages: dict[int, str] = {}
+
     def set_active_dashboard_target(self, league: str, team_id: str):
         with self._lock:
             self.active_dashboard_league = league
