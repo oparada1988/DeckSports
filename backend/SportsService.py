@@ -95,12 +95,13 @@ class SportsService:
         self.active_score_actions: set[int] = set()
 
     # --- Hub & Satellite Registry ---
-    def register_hub(self, action_id: int, coords: tuple[int, int] | None, league_key: str, team_id: str):
+    def register_hub(self, action_id: int, coords: tuple[int, int] | None, league_key: str, team_id: str, display_mode: int = 0):
         with self._lock:
             self.hubs[action_id] = {
                 "coords": (coords[0], coords[1]) if (coords and isinstance(coords, (list, tuple)) and len(coords) >= 2) else None,
                 "league": league_key,
-                "team_id": team_id
+                "team_id": team_id,
+                "display_mode": display_mode
             }
         self.notify_listeners(league_key, team_id)
 
@@ -128,7 +129,7 @@ class SportsService:
     def get_nearest_hub_target(self, my_coords: tuple[int, int] | None) -> tuple[str, str, str]:
         """
         Given coordinates (my_x, my_y), finds the best matching GameHub on the deck.
-        Returns (league_key, team_id, side_str) where side_str is 'away' or 'home'.
+        Returns (league_key, team_id, side_str) where side_str is 'away', 'home', 'followed', or 'opponent'.
         """
         with self._lock:
             hubs_list = list(self.hubs.values())
@@ -164,7 +165,15 @@ class SportsService:
             best_hub = hubs_list[0]
 
         hub_x = best_hub["coords"][0] if best_hub["coords"] else 0
-        side = "home" if my_x > hub_x else "away"
+        display_mode = best_hub.get("display_mode", 0)
+
+        if display_mode == 1:
+            # Always My Team on Left
+            side = "followed" if my_x < hub_x else "opponent"
+        else:
+            # Broadcast mode: Away Left, Home Right
+            side = "home" if my_x > hub_x else "away"
+
         return (best_hub["league"], best_hub["team_id"], side)
 
     # --- Listener Management ---
@@ -357,6 +366,25 @@ class SportsService:
         finally:
             self._league_fetch_locks[league_key] = False
 
+    def _extract_logo_url(self, t_data: dict) -> str:
+        logos = t_data.get("logos")
+        if logos and isinstance(logos, list) and len(logos) > 0:
+            first = logos[0]
+            if isinstance(first, dict):
+                return first.get("href", "")
+            elif isinstance(first, str):
+                return first
+        logo = t_data.get("logo")
+        if isinstance(logo, str):
+            return logo
+        elif isinstance(logo, list) and len(logo) > 0:
+            first = logo[0]
+            if isinstance(first, dict):
+                return first.get("href", "")
+            elif isinstance(first, str):
+                return first
+        return ""
+
     def _update_team_from_data(self, league_key: str, team_id: str, data: dict):
         events = data.get("events", [])
         matched_event = None
@@ -371,13 +399,31 @@ class SportsService:
             if matched_event:
                 break
 
+        is_stale_final = False
+        if matched_event:
+            status_info = matched_event.get("status", {})
+            status_type = status_info.get("type", {})
+            raw_state = status_type.get("state", "off")
+            if raw_state == "post":
+                # Check if game completed > 24 hours ago
+                ev_date_str = matched_event.get("date", "")
+                if ev_date_str:
+                    try:
+                        ev_dt = datetime.fromisoformat(ev_date_str.replace("Z", "+00:00"))
+                        now_utc = datetime.now(timezone.utc)
+                        # If more than 24 hours have elapsed since game time
+                        if (now_utc - ev_dt).total_seconds() > 24 * 3600:
+                            is_stale_final = True
+                    except Exception:
+                        pass
+
         new_state = GameState(
             league_key=league_key,
             followed_team_id=str(team_id),
             last_updated=time.time()
         )
 
-        if matched_event:
+        if matched_event and not is_stale_final:
             self._parse_event_into_state(matched_event, new_state)
         else:
             self._parse_off_game_state(new_state)
@@ -405,25 +451,36 @@ class SportsService:
         state.period = status_info.get("period", 0)
         state.period_text = status_type.get("shortDetail", "")
 
+        all_teams = self.get_teams(state.league_key)
+        team_dict = {str(t["id"]): t for t in all_teams}
+
         for c in comp.get("competitors", []):
             home_away = c.get("homeAway", "away")
             t_data = c.get("team", {})
-            logos = t_data.get("logos", [])
-            logo_href = logos[0].get("href", "") if logos else t_data.get("logo", "")
+            t_id = str(c.get("id") or t_data.get("id", ""))
+            cached_team = team_dict.get(t_id, {})
 
+            logo_href = self._extract_logo_url(t_data) or cached_team.get("logo_url", "")
             records = c.get("records", [])
-            record_str = records[0].get("summary", "") if records else ""
+            record_str = records[0].get("summary", "") if records else cached_team.get("record", "")
+
+            color_hex = t_data.get("color") or cached_team.get("color")
+            alt_hex = t_data.get("alternateColor") or cached_team.get("alternate_color")
+
+            name = t_data.get("displayName") or cached_team.get("name", "TBD")
+            abbreviation = t_data.get("abbreviation") or cached_team.get("abbreviation", "TBD")
+            short_name = t_data.get("shortDisplayName") or t_data.get("name") or cached_team.get("short_name", "TBD")
 
             team_obj = TeamInfo(
-                id=str(c.get("id") or t_data.get("id", "")),
-                name=t_data.get("displayName", "TBD"),
-                abbreviation=t_data.get("abbreviation", "TBD"),
-                short_name=t_data.get("shortDisplayName", t_data.get("name", "TBD")),
+                id=t_id,
+                name=name,
+                abbreviation=abbreviation,
+                short_name=short_name,
                 logo_url=logo_href,
-                score=str(c.get("score", "0")),
+                score=str(c.get("score", "")) if raw_state in ("in", "post") else "",
                 record=record_str,
-                color=hex_to_rgba(t_data.get("color")),
-                alternate_color=hex_to_rgba(t_data.get("alternateColor"), (255, 255, 255, 255)),
+                color=hex_to_rgba(color_hex),
+                alternate_color=hex_to_rgba(alt_hex, (255, 255, 255, 255)),
                 is_home=(home_away == "home")
             )
 
@@ -449,7 +506,7 @@ class SportsService:
                 elif poss_id == state.home_team.id:
                     state.possession_side = "home"
 
-        if raw_state == "pre":
+        if raw_state == "pre" or ev.get("date"):
             self._format_game_datetime(ev.get("date", ""), state)
 
     def _parse_off_game_state(self, state: GameState):
@@ -472,11 +529,14 @@ class SportsService:
                         if ev_dt > now:
                             self._parse_event_into_state(ev, state)
                             state.status_state = "pre"
+                            self._format_game_datetime(ev_date_str, state)
+                            state.away_team.score = ""
+                            state.home_team.score = ""
                             return
                     except Exception:
                         pass
         except Exception as e:
-            log.trace(f"Schedule lookup error: {e}")
+            log.error(f"Schedule lookup error: {e}")
 
         teams = self.get_teams(state.league_key)
         my_team = next((t for t in teams if str(t["id"]) == str(state.followed_team_id)), None)
@@ -497,7 +557,13 @@ class SportsService:
             return
         try:
             dt = datetime.fromisoformat(iso_date.replace("Z", "+00:00")).astimezone()
-            state.next_game_date = dt.strftime("%a, %b %d")
+            now = datetime.now(dt.tzinfo)
+            if dt.date() == now.date():
+                state.next_game_date = "TODAY"
+            elif (dt.date() - now.date()).days == 1:
+                state.next_game_date = "TOMORROW"
+            else:
+                state.next_game_date = dt.strftime("%a, %b %d")
             state.next_game_time = dt.strftime("%I:%M %p").lstrip("0")
         except Exception:
             state.next_game_date = iso_date[:10]

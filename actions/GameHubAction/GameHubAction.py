@@ -93,7 +93,8 @@ class GameHubAction(ActionBase):
                 self.set_settings(settings)
 
         coords = getattr(self.input_ident, "coords", None)
-        self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id)
+        display_mode = settings.get("display_mode", 0)
+        self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode)
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
 
         self.plugin_base.sports_service.fetch_async(league, team_id, force=True, refresh_seconds=refresh)
@@ -227,7 +228,8 @@ class GameHubAction(ActionBase):
             self.set_settings(settings)
 
             coords = getattr(self.input_ident, "coords", None)
-            self.plugin_base.sports_service.register_hub(id(self), coords, new_league, settings.get("team_id", ""))
+            display_mode = settings.get("display_mode", 0)
+            self.plugin_base.sports_service.register_hub(id(self), coords, new_league, settings.get("team_id", ""), display_mode)
             self.plugin_base.sports_service.fetch_async(new_league, settings.get("team_id", ""), force=True)
             self.update_display()
 
@@ -242,7 +244,8 @@ class GameHubAction(ActionBase):
             self.set_settings(settings)
 
             coords = getattr(self.input_ident, "coords", None)
-            self.plugin_base.sports_service.register_hub(id(self), coords, settings.get("league", "NFL"), team_obj["id"])
+            display_mode = settings.get("display_mode", 0)
+            self.plugin_base.sports_service.register_hub(id(self), coords, settings.get("league", "NFL"), team_obj["id"], display_mode)
             self.plugin_base.sports_service.fetch_async(settings.get("league", "NFL"), team_obj["id"], force=True)
             self.update_display()
 
@@ -259,6 +262,9 @@ class GameHubAction(ActionBase):
         settings = self.get_settings()
         settings["display_mode"] = idx
         self.set_settings(settings)
+
+        coords = getattr(self.input_ident, "coords", None)
+        self.plugin_base.sports_service.register_hub(id(self), coords, settings.get("league", "NFL"), str(settings.get("team_id", "")), idx)
         self.update_display()
 
     # --- Canvas Rendering with Pillow ---

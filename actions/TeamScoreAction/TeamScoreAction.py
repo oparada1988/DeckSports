@@ -121,7 +121,17 @@ class TeamScoreAction(ActionBase):
         state = self.plugin_base.sports_service.get_game_state(hub_league, hub_team_id)
 
         chosen_side = auto_side if side_setting == "auto" else side_setting
-        team = state.home_team if chosen_side == "home" else state.away_team
+
+        if chosen_side == "home":
+            team = state.home_team
+        elif chosen_side == "away":
+            team = state.away_team
+        elif chosen_side == "followed":
+            team = state.away_team if str(state.away_team.id) == str(state.followed_team_id) else state.home_team
+        elif chosen_side == "opponent":
+            team = state.home_team if str(state.away_team.id) == str(state.followed_team_id) else state.away_team
+        else:
+            team = state.away_team
 
         return state, team
 
@@ -148,38 +158,50 @@ class TeamScoreAction(ActionBase):
         font_tag = get_bundled_font(9)
         draw.text((90, 13), tag, fill=(240, 240, 240, 210), anchor="rm", font=font_tag)
 
-        # 2. Team Logo in Center Background (Watermark style)
-        if team.logo_url:
-            logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(56, 56))
-            if logo:
-                alpha = logo.split()[3]
-                alpha = ImageEnhance.Brightness(alpha).enhance(0.40)
-                faded_logo = logo.copy()
-                faded_logo.putalpha(alpha)
+        # 2. Main Body: Live/Recent Final Score vs Pre-Game/Off-Season Team Display
+        is_live_or_recent_final = (state.status_state in ("in", "post"))
 
-                lx = (100 - faded_logo.width) // 2
-                ly = 26 + (50 - faded_logo.height) // 2
-                img.alpha_composite(faded_logo, (lx, ly))
+        if is_live_or_recent_final:
+            # Watermark logo behind score
+            if team.logo_url:
+                logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(56, 56))
+                if logo:
+                    alpha = logo.split()[3]
+                    alpha = ImageEnhance.Brightness(alpha).enhance(0.35)
+                    faded_logo = logo.copy()
+                    faded_logo.putalpha(alpha)
 
-        # 3. BIG CENTERED SCORE (Large 34px bold font)
-        score_val = team.score if (state.status_state in ("in", "post") and team.score is not None) else "0"
-        if state.status_state in ("pre", "off") and (not team.score or team.score == "0"):
-            score_val = "—"
+                    lx = (100 - faded_logo.width) // 2
+                    ly = 26 + (50 - faded_logo.height) // 2
+                    img.alpha_composite(faded_logo, (lx, ly))
 
-        font_score = get_bundled_font(34)
-        cx, cy = 50, 52
+            # BIG CENTERED SCORE (Large 34px bold font)
+            score_val = team.score if (team.score is not None and team.score != "") else "0"
+            font_score = get_bundled_font(34)
+            cx, cy = 50, 52
 
-        # Draw dark outline around score text for high contrast
-        outline_color = (10, 10, 15, 250)
-        for ox in (-2, -1, 0, 1, 2):
-            for oy in (-2, -1, 0, 1, 2):
-                if ox != 0 or oy != 0:
-                    draw.text((cx + ox, cy + oy), score_val, fill=outline_color, anchor="mm", font=font_score)
+            # Draw dark outline around score text for high contrast
+            outline_color = (10, 10, 15, 250)
+            for ox in (-2, -1, 0, 1, 2):
+                for oy in (-2, -1, 0, 1, 2):
+                    if ox != 0 or oy != 0:
+                        draw.text((cx + ox, cy + oy), score_val, fill=outline_color, anchor="mm", font=font_score)
 
-        # Main score text
-        draw.text((cx, cy), score_val, fill=(255, 255, 255, 255), anchor="mm", font=font_score)
+            # Main score text
+            draw.text((cx, cy), score_val, fill=(255, 255, 255, 255), anchor="mm", font=font_score)
+        else:
+            # UPCOMING PRE-GAME / OFF-SEASON: No score shown! Crisp centered team logo
+            if team.logo_url:
+                logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(50, 50))
+                if logo:
+                    lx = (100 - logo.width) // 2
+                    ly = 26 + (52 - logo.height) // 2
+                    img.alpha_composite(logo, (lx, ly))
+            else:
+                font_name = get_bundled_font(12)
+                draw.text((50, 52), team.short_name[:8], fill=(220, 225, 235, 255), anchor="mm", font=font_name)
 
-        # 4. Footer Bar: Record / Status
+        # 3. Footer Bar: Record / Status
         draw.rectangle([(0, 78), (100, 100)], fill=(16, 18, 22, 255))
         draw.line([(0, 78), (100, 78)], fill=(45, 50, 60, 255), width=1)
 
