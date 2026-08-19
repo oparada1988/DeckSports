@@ -1,0 +1,670 @@
+{
+    "keys": {
+        "0x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::GameHubReturnAction",
+                            "settings": {}
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "1x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamScoreAction",
+                            "settings": {
+                                "side": "away"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "2x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
+                            "settings": {
+                                "slot": "away_full"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "3x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::GameHubAction",
+                            "settings": {}
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "4x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "drive_pp"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "5x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
+                            "settings": {
+                                "slot": "home_full"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "6x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamScoreAction",
+                            "settings": {
+                                "side": "home"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "7x0": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "venue_tv"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "0x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::PlayerLeaderAction",
+                            "settings": {
+                                "side": "away",
+                                "cat_idx": 0
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "1x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::PlayerLeaderAction",
+                            "settings": {
+                                "side": "away",
+                                "cat_idx": 1
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "2x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::PlayerLeaderAction",
+                            "settings": {
+                                "side": "away",
+                                "cat_idx": 2
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "3x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "down_dist"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "4x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "ball_spot"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "5x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::PlayerLeaderAction",
+                            "settings": {
+                                "side": "home",
+                                "cat_idx": 0
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "6x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::PlayerLeaderAction",
+                            "settings": {
+                                "side": "home",
+                                "cat_idx": 1
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "7x1": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::PlayerLeaderAction",
+                            "settings": {
+                                "side": "home",
+                                "cat_idx": 2
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "0x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
+                            "settings": {
+                                "metric_idx": 0
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "1x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
+                            "settings": {
+                                "metric_idx": 1
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "2x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
+                            "settings": {
+                                "metric_idx": 2
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "3x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
+                            "settings": {
+                                "metric_idx": 3
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "4x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::ScoringSummaryAction",
+                            "settings": {}
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "5x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
+                            "settings": {
+                                "metric_idx": 4
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "6x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
+                            "settings": {
+                                "metric_idx": 5
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "7x2": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::GameHubAction",
+                            "settings": {}
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "0x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
+                            "settings": {
+                                "slot": "p1"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "1x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
+                            "settings": {
+                                "slot": "p2"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "2x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
+                            "settings": {
+                                "slot": "p3"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "3x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
+                            "settings": {
+                                "slot": "p4"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "4x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "auto"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "5x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "ball_spot"
+                            }
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "6x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::ScoringSummaryAction",
+                            "settings": {}
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        },
+        "7x3": {
+            "states": {
+                "0": {
+                    "actions": [
+                        {
+                            "id": "com_oparada1988_DeckSports::GameHubReturnAction",
+                            "settings": {}
+                        }
+                    ],
+                    "image-control-action": 0,
+                    "label-control-actions": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "background-control-action": 0
+                }
+            }
+        }
+    }
+}

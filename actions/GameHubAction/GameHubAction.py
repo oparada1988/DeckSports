@@ -11,8 +11,12 @@ from gi.repository import Gtk, Adw, GLib
 from PIL import Image, ImageDraw, ImageFont
 
 from src.backend.PluginManager.ActionBase import ActionBase
-from ...backend.Leagues import LEAGUES, LEAGUE_KEYS
-from ...backend.SportsService import GameState
+try:
+    from ...backend.Leagues import LEAGUES, LEAGUE_KEYS
+    from ...backend.SportsService import GameState
+except (ImportError, ValueError):
+    from backend.Leagues import LEAGUES, LEAGUE_KEYS
+    from backend.SportsService import GameState
 
 REFRESH_OPTIONS = [
     ("Adaptive (15s live / 10m off)", 15),
@@ -124,8 +128,34 @@ class GameHubAction(ActionBase):
         settings = self.get_settings()
         league = settings.get("league", "NFL")
         team_id = str(settings.get("team_id", ""))
+        tap_mode = settings.get("tap_mode", 0)
+
         if league and team_id:
             self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
+            self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=True)
+
+        if tap_mode == 0:
+            # Open interactive Game Hub Dashboard
+            deck = getattr(self, "deck_controller", None)
+            if deck:
+                key_count = getattr(deck, "number_of_keys", 15)
+                cols = getattr(deck, "keys_per_row", 5)
+                is_xl = (key_count >= 32 or cols >= 8 or "XL" in str(getattr(deck, "deck_type", "")))
+
+                page_filename = "DeckSports_GameHub_XL.json" if is_xl else "DeckSports_GameHub_MK2.json"
+                user_page_path = os.path.join(gl.DATA_PATH, "pages", page_filename)
+
+                if not os.path.isfile(user_page_path):
+                    plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+                    bundled_path = os.path.join(plugin_dir, "pages", page_filename)
+                    if os.path.isfile(bundled_path):
+                        user_page_path = bundled_path
+
+                if os.path.isfile(user_page_path):
+                    active_page = getattr(deck, "active_page", None)
+                    if active_page and hasattr(active_page, "json_path"):
+                        self.plugin_base.sports_service.set_origin_page(id(deck), active_page.json_path)
+                    deck.load_page(user_page_path)
 
     # --- Sidebar Configuration UI ---
     def get_config_rows(self) -> list:
@@ -193,7 +223,28 @@ class GameHubAction(ActionBase):
         self._display_mode_row.connect("notify::selected", self._on_display_mode_changed)
         rows.append(self._display_mode_row)
 
+        # 5. Key Tap Behavior (Dashboard vs Refresh)
+        tap_model = Gtk.StringList()
+        tap_model.append("Open Game Hub Dashboard (MK.2 / XL Page)")
+        tap_model.append("Force Refresh Only")
+
+        self._tap_row = Adw.ComboRow(
+            title="Key Press Action",
+            subtitle="Open full-screen Game Hub or refresh score",
+            model=tap_model
+        )
+        saved_tap = settings.get("tap_mode", 0)
+        self._tap_row.set_selected(min(saved_tap, 1))
+        self._tap_row.connect("notify::selected", self._on_tap_mode_changed)
+        rows.append(self._tap_row)
+
         return rows
+
+    def _on_tap_mode_changed(self, row, _pspec):
+        idx = row.get_selected()
+        settings = self.get_settings()
+        settings["tap_mode"] = idx
+        self.set_settings(settings)
 
     def _populate_team_dropdown(self, league_key: str, initial_select: str = ""):
         self._is_updating_ui = True

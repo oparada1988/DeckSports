@@ -12,7 +12,10 @@ from gi.repository import Gtk, Adw, GLib
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 from src.backend.PluginManager.ActionBase import ActionBase
-from ...backend.SportsService import GameState, TeamInfo
+try:
+    from ...backend.SportsService import GameState, TeamInfo
+except (ImportError, ValueError):
+    from backend.SportsService import GameState, TeamInfo
 
 SIDE_OPTIONS = [
     ("Auto (Sync with nearest Game Hub on row: Left=Away, Right=Home)", "auto"),

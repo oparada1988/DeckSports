@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 import requests
-from PIL import Image
+from PIL import Image, ImageOps, ImageDraw
 import logging
 log = logging.getLogger("DeckSports")
 from gi.repository import GLib
@@ -52,9 +52,46 @@ class TeamInfo:
 
 
 @dataclass
+class PlayerLeader:
+    name: str = "TBD"
+    short_name: str = "TBD"
+    team_abbrev: str = ""
+    category: str = "Leader"  # "Passing", "Rushing", "Receiving", "Batting", "Pitching", "Points", etc.
+    display_stat: str = ""     # "268 YDS, 2 TD" or "32 PTS, 8 AST"
+    headshot_url: str = ""
+    jersey: str = ""
+    position: str = ""
+    is_home: bool = False
+
+
+@dataclass
+class TeamComparisonStat:
+    label: str = ""
+    away_val: str = ""
+    home_val: str = ""
+
+
+@dataclass
+class GameSummary:
+    event_id: str = ""
+    league_key: str = "NFL"
+    away_linescores: list[str] = field(default_factory=list)
+    home_linescores: list[str] = field(default_factory=list)
+    away_leaders: list[PlayerLeader] = field(default_factory=list)
+    home_leaders: list[PlayerLeader] = field(default_factory=list)
+    team_stats: list[TeamComparisonStat] = field(default_factory=list)
+    last_play: str = ""
+    venue_name: str = ""
+    broadcast_channel: str = ""
+    weather_text: str = ""
+    last_updated: float = 0.0
+
+
+@dataclass
 class GameState:
     league_key: str = "NFL"
     followed_team_id: str = ""
+    event_id: str = ""
     status_state: str = "off"   # "pre", "in", "post", "off"
     status_detail: str = "No Game Scheduled"
     clock: str = ""
@@ -68,6 +105,7 @@ class GameState:
     next_game_date: str = ""
     next_game_time: str = ""
     next_game_opponent: str = ""
+    summary: GameSummary | None = None
     last_updated: float = 0.0
 
 
@@ -75,13 +113,18 @@ class SportsService:
     def __init__(self):
         self.cache_dir = os.path.expanduser("~/.cache/DeckSports")
         self.logo_cache_dir = os.path.join(self.cache_dir, "logos")
+        self.headshot_cache_dir = os.path.join(self.cache_dir, "headshots")
         os.makedirs(self.logo_cache_dir, exist_ok=True)
+        os.makedirs(self.headshot_cache_dir, exist_ok=True)
 
         self.team_cache: dict[str, list[dict]] = {}
         self.image_cache: dict[str, Image.Image] = {}
+        self.headshot_cache: dict[str, Image.Image] = {}
 
         # Multi-game state dictionary keyed by (league_key, team_id)
         self.game_states: dict[tuple[str, str], GameState] = {}
+        self.game_summaries: dict[tuple[str, str], GameSummary] = {}
+        self._summary_fetch_locks: dict[tuple[str, str], bool] = {}
 
         # Shared league scoreboard cache: {league_key: {"time": float, "data": dict}}
         self.league_scoreboard_cache: dict[str, dict] = {}
@@ -93,6 +136,9 @@ class SportsService:
         # Hub spatial registry: action_id -> {"coords": (x, y), "league": str, "team_id": str}
         self.hubs: dict[int, dict] = {}
         self.active_score_actions: set[int] = set()
+
+        # Origin page memory for return buttons: deck_id -> page_path
+        self.origin_pages: dict[int, str] = {}
 
     # --- Hub & Satellite Registry ---
     def register_hub(self, action_id: int, coords: tuple[int, int] | None, league_key: str, team_id: str, display_mode: int = 0):
@@ -261,6 +307,250 @@ class SportsService:
         if not cfg:
             return None
         return self.get_image(cfg.logo_url, max_size)
+
+    def get_headshot(self, url: str | None, max_size: tuple[int, int] = (44, 44)) -> Image.Image | None:
+        if not url:
+            return None
+
+        cache_key = f"hs_{url}_{max_size[0]}x{max_size[1]}"
+        if cache_key in self.headshot_cache:
+            return self.headshot_cache[cache_key]
+
+        # Check local disk cache
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        file_path = os.path.join(self.headshot_cache_dir, f"{url_hash}.png")
+
+        if os.path.exists(file_path):
+            try:
+                raw_img = Image.open(file_path).convert("RGBA")
+                mask = Image.new("L", max_size, 0)
+                mask_draw = ImageDraw.Draw(mask)
+                mask_draw.ellipse((0, 0, max_size[0], max_size[1]), fill=255)
+
+                fitted = ImageOps.fit(raw_img, max_size, centering=(0.5, 0.5))
+                fitted.putalpha(mask)
+
+                self.headshot_cache[cache_key] = fitted
+                return fitted
+            except Exception:
+                pass
+
+        # If not cached on disk, fetch asynchronously on background daemon thread
+        def _fetch_headshot_bg():
+            try:
+                resp = requests.get(url, timeout=6)
+                if resp.status_code == 200:
+                    raw_img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+                    raw_img.save(file_path, "PNG")
+
+                    mask = Image.new("L", max_size, 0)
+                    mask_draw = ImageDraw.Draw(mask)
+                    mask_draw.ellipse((0, 0, max_size[0], max_size[1]), fill=255)
+
+                    fitted = ImageOps.fit(raw_img, max_size, centering=(0.5, 0.5))
+                    fitted.putalpha(mask)
+
+                    self.headshot_cache[cache_key] = fitted
+                    GLib.idle_add(self.notify_all)
+            except Exception:
+                pass
+
+        threading.Thread(target=_fetch_headshot_bg, daemon=True).start()
+        return None
+
+    # --- Origin Page Memory for Navigation ---
+    def set_origin_page(self, deck_id: int, page_path: str | None):
+        with self._lock:
+            if page_path:
+                self.origin_pages[deck_id] = page_path
+
+    def get_origin_page(self, deck_id: int) -> str | None:
+        with self._lock:
+            return self.origin_pages.get(deck_id)
+
+    # --- Detailed Game Summary Management ---
+    def get_game_summary(self, league_key: str, team_id: str) -> GameSummary:
+        key = (league_key, str(team_id))
+        with self._lock:
+            if key in self.game_summaries:
+                return self.game_summaries[key]
+            new_summ = GameSummary(league_key=league_key)
+            self.game_summaries[key] = new_summ
+            return new_summ
+
+    def fetch_game_summary(self, league_key: str, team_id: str, force: bool = False):
+        if not league_key or not team_id:
+            return
+
+        key = (league_key, str(team_id))
+        now = time.time()
+        with self._lock:
+            cached_sum = self.game_summaries.get(key)
+            if not force and cached_sum and (now - cached_sum.last_updated < 20):
+                return
+            if self._summary_fetch_locks.get(key, False):
+                return
+            self._summary_fetch_locks[key] = True
+
+        state = self.get_game_state(league_key, team_id)
+        event_id = state.event_id
+
+        threading.Thread(target=self._fetch_summary_worker, args=(league_key, team_id, event_id), daemon=True).start()
+
+    def _fetch_summary_worker(self, league_key: str, team_id: str, event_id: str):
+        key = (league_key, str(team_id))
+        try:
+            cfg = LEAGUES.get(league_key)
+            if not cfg or not event_id:
+                return
+
+            url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/summary?event={event_id}"
+            resp = requests.get(url, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                summary_obj = self._parse_summary_payload(league_key, team_id, event_id, data)
+                with self._lock:
+                    self.game_summaries[key] = summary_obj
+                    st = self.game_states.get(key)
+                    if st:
+                        st.summary = summary_obj
+
+                # Pre-fetch headshots
+                for l in summary_obj.away_leaders + summary_obj.home_leaders:
+                    if l.headshot_url:
+                        self.get_headshot(l.headshot_url)
+
+                GLib.idle_add(lambda: self.notify_listeners(league_key, str(team_id)))
+        except Exception as e:
+            log.error(f"Error fetching summary for {league_key} {team_id} (event {event_id}): {e}")
+        finally:
+            with self._lock:
+                self._summary_fetch_locks[key] = False
+
+    def _parse_summary_payload(self, league_key: str, team_id: str, event_id: str, data: dict) -> GameSummary:
+        summary_obj = GameSummary(
+            event_id=event_id,
+            league_key=league_key,
+            last_updated=time.time()
+        )
+
+        # 1. Line Scores
+        header = data.get("header", {})
+        comp = header.get("competitions", [{}])[0]
+        for c in comp.get("competitors", []):
+            lines = [l.get("displayValue", "0") for l in c.get("linescores", [])]
+            if c.get("homeAway") == "home":
+                summary_obj.home_linescores = lines
+            else:
+                summary_obj.away_linescores = lines
+
+        # 2. Game Info / Venue / Broadcast
+        game_info = data.get("gameInfo", {})
+        summary_obj.venue_name = game_info.get("venue", {}).get("fullName", "")
+        summary_obj.weather_text = game_info.get("weather", {}).get("displayValue", "")
+        broadcasts = data.get("broadcasts", [])
+        if broadcasts:
+            names = broadcasts[0].get("names", [])
+            summary_obj.broadcast_channel = names[0] if names else ""
+
+        # 3. Last Scoring Play
+        scoring_plays = data.get("scoringPlays", [])
+        if scoring_plays:
+            last = scoring_plays[-1]
+            summary_obj.last_play = last.get("text", "") or last.get("headline", "")
+
+        # 4. Player Leaders from Boxscore
+        box = data.get("boxscore", {})
+        all_teams = self.get_teams(league_key)
+        team_dict = {str(t["id"]): t for t in all_teams}
+
+        for p in box.get("players", []):
+            p_team = p.get("team", {})
+            p_tid = str(p_team.get("id", ""))
+            p_abbrev = p_team.get("abbreviation", "")
+            is_home_player = False
+            state = self.get_game_state(league_key, team_id)
+            if state and state.home_team.id and p_tid == state.home_team.id:
+                is_home_player = True
+
+            leaders_list = []
+            for s in p.get("statistics", []):
+                cat_name = s.get("name") or s.get("type") or "Leader"
+                # Focus on major statistical categories
+                athletes = s.get("athletes", [])
+                if athletes:
+                    top = athletes[0]
+                    ath = top.get("athlete", {})
+                    stats = top.get("stats", [])
+                    ath_name = ath.get("displayName") or ath.get("shortName", "TBD")
+                    headshot = ath.get("headshot", {}).get("href", "")
+                    jersey = ath.get("jersey", "")
+                    pos = ath.get("position", {}).get("abbreviation", "") if isinstance(ath.get("position"), dict) else ""
+
+                    stat_val = " ".join(stats[:3]) if stats else ""
+                    if cat_name in ("passing", "Passing") and len(stats) >= 4:
+                        # e.g. "13/22 130 YD 1 TD"
+                        stat_val = f"{stats[1]} YD {stats[3]} TD"
+                    elif cat_name in ("rushing", "Rushing") and len(stats) >= 4:
+                        stat_val = f"{stats[0]} CAR {stats[1]} YD"
+                    elif cat_name in ("receiving", "Receiving") and len(stats) >= 3:
+                        stat_val = f"{stats[0]} REC {stats[1]} YD"
+                    elif cat_name in ("batting", "Batting") and len(stats) >= 4:
+                        stat_val = f"{stats[0]} {stats[3]} RBI"
+                    elif cat_name in ("pitching", "Pitching") and len(stats) >= 4:
+                        stat_val = f"{stats[0]} IP {stats[1]} K"
+
+                    leader_obj = PlayerLeader(
+                        name=ath_name,
+                        short_name=ath.get("shortName", ath_name),
+                        team_abbrev=p_abbrev,
+                        category=cat_name.capitalize(),
+                        display_stat=stat_val,
+                        headshot_url=headshot,
+                        jersey=jersey,
+                        position=pos,
+                        is_home=is_home_player
+                    )
+                    leaders_list.append(leader_obj)
+
+            if is_home_player:
+                summary_obj.home_leaders = leaders_list
+            else:
+                summary_obj.away_leaders = leaders_list
+
+        # 5. Team Statistics Comparison
+        box_teams = box.get("teams", [])
+        if len(box_teams) >= 2:
+            team_0_stats = {s.get("name"): s.get("displayValue", "") for s in box_teams[0].get("statistics", [])}
+            team_1_stats = {s.get("name"): s.get("displayValue", "") for s in box_teams[1].get("statistics", [])}
+
+            stat_labels = [
+                ("totalYards", "Total Yards"),
+                ("thirdDownEff", "3rd Down Eff"),
+                ("turnovers", "Turnovers"),
+                ("possessionTime", "Time of Poss"),
+                ("fieldGoals", "Field Goals"),
+                ("fieldGoalPct", "FG %"),
+                ("threePointFieldGoalPct", "3PT %"),
+                ("freeThrowPct", "FT %"),
+                ("rebounds", "Rebounds"),
+                ("shotsOnGoal", "Shots on Goal"),
+                ("powerPlayPct", "Power Play"),
+                ("penaltyMinutes", "Penalty Min"),
+                ("possession", "Possession %"),
+                ("fouls", "Fouls"),
+            ]
+            for stat_key, label in stat_labels:
+                v0 = team_0_stats.get(stat_key)
+                v1 = team_1_stats.get(stat_key)
+                if v0 is not None and v1 is not None:
+                    summary_obj.team_stats.append(TeamComparisonStat(
+                        label=label,
+                        away_val=str(v0),
+                        home_val=str(v1)
+                    ))
+
+        return summary_obj
 
     # --- Teams Fetching with Disk Caching ---
     def get_teams(self, league_key: str) -> list[dict]:
@@ -440,6 +730,7 @@ class SportsService:
         GLib.idle_add(lambda: self.notify_listeners(league_key, str(team_id)))
 
     def _parse_event_into_state(self, ev: dict, state: GameState):
+        state.event_id = str(ev.get("id", ""))
         comp = ev.get("competitions", [{}])[0]
         status_info = ev.get("status", {})
         status_type = status_info.get("type", {})
