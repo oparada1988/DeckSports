@@ -137,8 +137,20 @@ class SportsService:
         self.hubs: dict[int, dict] = {}
         self.active_score_actions: set[int] = set()
 
-        # Origin page memory for return buttons: deck_id -> page_path
-        self.origin_pages: dict[int, str] = {}
+        # Active dashboard tracked target (propagated when entering Game Hub)
+        self.active_dashboard_league: str | None = None
+        self.active_dashboard_team_id: str | None = None
+
+    def set_active_dashboard_target(self, league: str, team_id: str):
+        with self._lock:
+            self.active_dashboard_league = league
+            self.active_dashboard_team_id = str(team_id)
+
+    def get_active_dashboard_target(self) -> tuple[str, str] | None:
+        with self._lock:
+            if self.active_dashboard_league and self.active_dashboard_team_id:
+                return (self.active_dashboard_league, self.active_dashboard_team_id)
+            return None
 
     # --- Hub & Satellite Registry ---
     def register_hub(self, action_id: int, coords: tuple[int, int] | None, league_key: str, team_id: str, display_mode: int = 0):
@@ -177,6 +189,15 @@ class SportsService:
         Given coordinates (my_x, my_y), finds the best matching GameHub on the deck.
         Returns (league_key, team_id, side_str) where side_str is 'away', 'home', 'followed', or 'opponent'.
         """
+        dash_target = self.get_active_dashboard_target()
+        if dash_target:
+            league, team_id = dash_target
+            my_x = my_coords[0] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 1) else 0
+            # Center of 3-button scoreboard on XL is x=3, on MK2 is x=2.
+            # Left of center -> 'away', Right of center -> 'home'
+            side = "away" if my_x <= 3 else "home"
+            return (league, team_id, side)
+
         with self._lock:
             hubs_list = list(self.hubs.values())
 

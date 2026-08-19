@@ -146,6 +146,7 @@ class GameHubAction(ActionBase):
         tap_mode = settings.get("tap_mode", 0)
 
         if league and team_id:
+            self.plugin_base.sports_service.set_active_dashboard_target(league, team_id)
             self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
             self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=True)
 
@@ -358,8 +359,13 @@ class GameHubAction(ActionBase):
         self._ensure_media_control()
 
         settings = self.get_settings()
-        league = settings.get("league", "NFL")
-        team_id = str(settings.get("team_id", ""))
+        dash_target = self.plugin_base.sports_service.get_active_dashboard_target()
+        page_path = getattr(self.page, "json_path", "") if getattr(self, "page", None) else ""
+        if dash_target and "GameHub" in os.path.basename(str(page_path)):
+            league, team_id = dash_target
+        else:
+            league = settings.get("league", "NFL")
+            team_id = str(settings.get("team_id", ""))
 
         state = self.plugin_base.sports_service.get_game_state(league, team_id)
         has_score_keys = self.plugin_base.sports_service.has_score_actions()
