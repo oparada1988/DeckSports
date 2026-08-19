@@ -71,6 +71,38 @@ class CelebrationManager:
             if not controller:
                 return
 
+            # Guard: Only play score celebration on Game Hub pages
+            active_page = getattr(controller, "active_page", None)
+            if not active_page:
+                return
+
+            page_name = ""
+            if hasattr(active_page, "get_name") and callable(active_page.get_name):
+                try:
+                    page_name = active_page.get_name()
+                except Exception:
+                    pass
+            if not page_name:
+                page_name = str(getattr(active_page, "name", ""))
+            json_path = str(getattr(active_page, "json_path", ""))
+
+            is_game_hub = ("GameHub" in page_name) or ("GameHub" in json_path)
+            if not is_game_hub:
+                # Never play animation on main profile or other pages
+                return
+
+            # Check if celebrations are enabled on the active GameHub action
+            all_actions = active_page.get_all_actions()
+            celebrations_enabled = True
+            for act in all_actions:
+                if act.__class__.__name__ == "GameHubAction":
+                    settings = act.get_settings()
+                    celebrations_enabled = settings.get("enable_celebrations", True)
+                    break
+
+            if not celebrations_enabled:
+                return
+
             cols, rows = 8, 4
             key_count = 32
             if hasattr(controller, "deck") and hasattr(controller.deck, "key_count"):

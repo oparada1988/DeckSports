@@ -737,6 +737,8 @@ class SportsService:
             last_updated=time.time()
         )
 
+        old_state = self.game_states.get((league_key, str(team_id)))
+
         if matched_event and not is_stale_final:
             self._parse_event_into_state(matched_event, new_state)
         else:
@@ -744,6 +746,24 @@ class SportsService:
 
         with self._lock:
             self.game_states[(league_key, str(team_id))] = new_state
+
+        # Auto-trigger score celebration when followed team scores during a live match
+        if old_state and new_state.status_state == "in" and hasattr(self, "celebration_manager"):
+            try:
+                is_away = str(new_state.away_team.id) == str(team_id)
+                old_sc = int(old_state.away_team.score or 0) if is_away else int(old_state.home_team.score or 0)
+                new_sc = int(new_state.away_team.score or 0) if is_away else int(new_state.home_team.score or 0)
+                if new_sc > old_sc:
+                    team = new_state.away_team if is_away else new_state.home_team
+                    self.celebration_manager.trigger(
+                        league_key=league_key,
+                        team_name=team.name or "Followed Team",
+                        team_abbrev=team.abbreviation or "TEAM",
+                        primary_color=team.color or (0, 53, 148, 255),
+                        alt_color=team.alternate_color or (200, 205, 215, 255)
+                    )
+            except Exception:
+                pass
 
         # Pre-cache logos
         if new_state.away_team.logo_url:

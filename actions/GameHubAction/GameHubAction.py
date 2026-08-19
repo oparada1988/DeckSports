@@ -272,7 +272,16 @@ class GameHubAction(ActionBase):
         self._tap_row.connect("notify::selected", self._on_tap_mode_changed)
         rows.append(self._tap_row)
 
-        # Test Celebration Row
+        # 6. Score Celebration On/Off Toggle
+        self._celebration_row = Adw.SwitchRow(
+            title="Score Celebration Animations",
+            subtitle="Play full-deck celebration when followed team scores (Game Hub page only)"
+        )
+        self._celebration_row.set_active(settings.get("enable_celebrations", True))
+        self._celebration_row.connect("notify::active", self._on_celebration_toggled)
+        rows.append(self._celebration_row)
+
+        # 7. Test Celebration Row
         test_row = Adw.ActionRow(
             title="Score Celebration Preview",
             subtitle="Trigger a 3-second full-deck animation for followed team"
@@ -284,6 +293,11 @@ class GameHubAction(ActionBase):
         rows.append(test_row)
 
         return rows
+
+    def _on_celebration_toggled(self, row, _pspec):
+        settings = self.get_settings()
+        settings["enable_celebrations"] = row.get_active()
+        self.set_settings(settings)
 
     def _on_test_celebration_clicked(self, _btn):
         settings = self.get_settings()
