@@ -15,6 +15,11 @@ from src.backend.PluginManager.ActionBase import ActionBase
 from src.backend.DeckManagement.InputIdentifier import Input
 import globals as gl
 
+try:
+    from ...backend.SportsService import GameState
+except (ImportError, ValueError):
+    from backend.SportsService import GameState
+
 @lru_cache(maxsize=32)
 def get_bundled_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -73,9 +78,19 @@ class GameHubReturnAction(ActionBase):
 
     def on_ready(self):
         self._ensure_media_control()
+        self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
+        GLib.idle_add(self.update_display)
+
+    def on_remove(self):
+        self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
+
+    def on_game_state_updated(self, league_key: str, team_id: str, state: GameState):
         GLib.idle_add(self.update_display)
 
     def on_key_down(self):
+        if hasattr(self.plugin_base.sports_service, "celebration_manager"):
+            if self.plugin_base.sports_service.celebration_manager.is_animating:
+                self.plugin_base.sports_service.celebration_manager.cancel()
         controller = self.get_deck_controller_to_use()
         if not controller:
             return
