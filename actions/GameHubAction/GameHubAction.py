@@ -314,8 +314,11 @@ class GameHubAction(ActionBase):
 
             coords = getattr(self.input_ident, "coords", None)
             display_mode = settings.get("display_mode", 0)
-            self.plugin_base.sports_service.register_hub(id(self), coords, new_league, settings.get("team_id", ""), display_mode)
-            self.plugin_base.sports_service.fetch_async(new_league, settings.get("team_id", ""), force=True)
+            team_id = str(settings.get("team_id", ""))
+            self.plugin_base.sports_service.register_hub(id(self), coords, new_league, team_id, display_mode)
+            self.plugin_base.sports_service.set_active_dashboard_target(new_league, team_id)
+            self.plugin_base.sports_service.fetch_async(new_league, team_id, force=True)
+            self.plugin_base.sports_service.notify_all()
             self.update_display()
 
     def _on_team_changed(self, row, _pspec):
@@ -325,13 +328,17 @@ class GameHubAction(ActionBase):
         if 0 <= idx < len(self._current_team_list):
             team_obj = self._current_team_list[idx]
             settings = self.get_settings()
-            settings["team_id"] = team_obj["id"]
+            team_id = str(team_obj["id"])
+            settings["team_id"] = team_id
             self.set_settings(settings)
 
             coords = getattr(self.input_ident, "coords", None)
             display_mode = settings.get("display_mode", 0)
-            self.plugin_base.sports_service.register_hub(id(self), coords, settings.get("league", "NFL"), team_obj["id"], display_mode)
-            self.plugin_base.sports_service.fetch_async(settings.get("league", "NFL"), team_obj["id"], force=True)
+            league = settings.get("league", "NFL")
+            self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode)
+            self.plugin_base.sports_service.set_active_dashboard_target(league, team_id)
+            self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
+            self.plugin_base.sports_service.notify_all()
             self.update_display()
 
     def _on_refresh_changed(self, row, _pspec):

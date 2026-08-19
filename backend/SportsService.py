@@ -192,19 +192,16 @@ class SportsService:
         Given coordinates (my_x, my_y), finds the best matching GameHub on the deck.
         Returns (league_key, team_id, side_str) where side_str is 'away', 'home', 'followed', or 'opponent'.
         """
-        dash_target = self.get_active_dashboard_target()
-        if dash_target:
-            league, team_id = dash_target
-            my_x = my_coords[0] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 1) else 0
-            # Center of 3-button scoreboard on XL is x=3, on MK2 is x=2.
-            # Left of center -> 'away', Right of center -> 'home'
-            side = "away" if my_x <= 3 else "home"
-            return (league, team_id, side)
-
         with self._lock:
             hubs_list = list(self.hubs.values())
 
         if not hubs_list:
+            dash_target = self.get_active_dashboard_target()
+            if dash_target:
+                league, team_id = dash_target
+                my_x = my_coords[0] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 1) else 0
+                side = "away" if my_x <= 3 else "home"
+                return (league, team_id, side)
             return ("NFL", "", "away")
 
         if not my_coords or not isinstance(my_coords, (list, tuple)) or len(my_coords) < 2:
