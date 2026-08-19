@@ -159,21 +159,22 @@ class SportsService:
             return None
 
     # --- Hub & Satellite Registry ---
-    def register_hub(self, action_id: int, coords: tuple[int, int] | None, league_key: str, team_id: str, display_mode: int = 0):
+    def register_hub(self, action_id: int, coords: tuple[int, int] | None, league_key: str, team_id: str, display_mode: int = 0, action_obj=None):
         with self._lock:
             self.hubs[action_id] = {
+                "action": action_obj,
                 "coords": (coords[0], coords[1]) if (coords and isinstance(coords, (list, tuple)) and len(coords) >= 2) else None,
                 "league": league_key,
-                "team_id": team_id,
+                "team_id": str(team_id),
                 "display_mode": display_mode
             }
-        self.notify_listeners(league_key, team_id)
+        self.notify_all()
 
     def unregister_hub(self, action_id: int):
         with self._lock:
             info = self.hubs.pop(action_id, None)
         if info:
-            self.notify_listeners(info["league"], info["team_id"])
+            self.notify_all()
 
     def register_score_action(self, action_id: int):
         with self._lock:
@@ -195,44 +196,50 @@ class SportsService:
         Given coordinates (my_x, my_y), finds the best matching GameHub on the deck.
         Returns (league_key, team_id, side_str) where side_str is 'away', 'home', 'followed', or 'opponent'.
         """
-        with self._lock:
-            hubs_list = list(self.hubs.values())
+        my_x = my_coords[0] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 1) else 0
+        my_y = my_coords[1] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 2) else 0
+        auto_side = "away" if my_x <= 3 else "home"
 
-        if not hubs_list:
-            dash_target = self.get_active_dashboard_target()
-            if dash_target:
-                league, team_id = dash_target
-                my_x = my_coords[0] if (my_coords and isinstance(my_coords, (list, tuple)) and len(my_coords) >= 1) else 0
-                side = "away" if my_x <= 3 else "home"
-                return (league, team_id, side)
-            return ("NFL", "", "away")
+        # If a dashboard target is active, strictly bind all dashboard tiles to this target
+        dash_target = self.get_active_dashboard_target()
+        if dash_target:
+            league, team_id = dash_target
+            return (league, team_id, auto_side)
+
+        with self._lock:
+            # Filter out hubs from inactive background pages
+            present_hubs = [
+                h for h in self.hubs.values()
+                if (h.get("action") is None or getattr(h.get("action"), "get_is_present", lambda: True)())
+            ]
+
+        if not present_hubs:
+            return ("NFL", "", auto_side)
 
         if not my_coords or not isinstance(my_coords, (list, tuple)) or len(my_coords) < 2:
-            first = hubs_list[0]
-            return (first["league"], first["team_id"], "away")
-
-        my_x, my_y = my_coords[0], my_coords[1]
+            first = present_hubs[0]
+            return (first["league"], first["team_id"], auto_side)
 
         # 1. Prefer hubs on the exact same row (my_y == hub_y)
-        same_row_hubs = [h for h in hubs_list if h["coords"] and h["coords"][1] == my_y]
+        same_row_hubs = [h for h in present_hubs if h["coords"] and h["coords"][1] == my_y]
 
-        candidates = same_row_hubs if same_row_hubs else [h for h in hubs_list if h["coords"]]
+        candidates = same_row_hubs if same_row_hubs else [h for h in present_hubs if h["coords"]]
         if not candidates:
-            first = hubs_list[0]
-            return (first["league"], first["team_id"], "away")
+            first = present_hubs[0]
+            return (first["league"], first["team_id"], auto_side)
 
         # Find closest candidate horizontally/Euclidean
         best_hub = None
         min_dist = float("inf")
         for h in candidates:
             hx, hy = h["coords"][0], h["coords"][1]
-            dist = math.hypot(my_x - hx, (my_y - hy) * 2) # weight vertical distance higher
+            dist = math.hypot(my_x - hx, (my_y - hy) * 2)
             if dist < min_dist:
                 min_dist = dist
                 best_hub = h
 
         if not best_hub:
-            best_hub = hubs_list[0]
+            best_hub = present_hubs[0]
 
         hub_x = best_hub["coords"][0] if best_hub["coords"] else 0
         display_mode = best_hub.get("display_mode", 0)

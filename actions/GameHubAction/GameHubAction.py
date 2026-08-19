@@ -110,7 +110,7 @@ class GameHubAction(ActionBase):
 
         coords = getattr(self.input_ident, "coords", None)
         display_mode = settings.get("display_mode", 0)
-        self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode)
+        self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode, action_obj=self)
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
 
         self.plugin_base.sports_service.fetch_async(league, team_id, force=True, refresh_seconds=refresh)
@@ -364,8 +364,8 @@ class GameHubAction(ActionBase):
             coords = getattr(self.input_ident, "coords", None)
             display_mode = settings.get("display_mode", 0)
             team_id = str(settings.get("team_id", ""))
-            self.plugin_base.sports_service.register_hub(id(self), coords, new_league, team_id, display_mode)
             self.plugin_base.sports_service.set_active_dashboard_target(new_league, team_id)
+            self.plugin_base.sports_service.register_hub(id(self), coords, new_league, team_id, display_mode, action_obj=self)
             self.plugin_base.sports_service.fetch_async(new_league, team_id, force=True)
             self.plugin_base.sports_service.notify_all()
             self.update_display()
@@ -384,8 +384,8 @@ class GameHubAction(ActionBase):
             coords = getattr(self.input_ident, "coords", None)
             display_mode = settings.get("display_mode", 0)
             league = settings.get("league", "NFL")
-            self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode)
             self.plugin_base.sports_service.set_active_dashboard_target(league, team_id)
+            self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode, action_obj=self)
             self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
             self.plugin_base.sports_service.notify_all()
             self.update_display()
