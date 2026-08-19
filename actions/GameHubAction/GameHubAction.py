@@ -153,9 +153,14 @@ class GameHubAction(ActionBase):
             self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=True)
 
         if tap_mode == 0:
-            # Open interactive Game Hub Dashboard
             controller = self.get_deck_controller_to_use()
             if not controller:
+                return
+
+            # If already on the Game Hub page, do not reload/switch pages
+            active_page = getattr(controller, "active_page", None)
+            active_path = getattr(active_page, "json_path", "") if active_page else ""
+            if active_path and "GameHub" in os.path.basename(str(active_path)):
                 return
 
             key_count = 15

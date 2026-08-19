@@ -24,9 +24,9 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::TeamScoreAction",
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
                             "settings": {
-                                "side": "away"
+                                "slot": "away_full"
                             }
                         }
                     ],
@@ -45,9 +45,9 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::LineScoreAction",
+                            "id": "com_oparada1988_DeckSports::TeamScoreAction",
                             "settings": {
-                                "slot": "away_full"
+                                "side": "away"
                             }
                         }
                     ],
@@ -85,9 +85,9 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "id": "com_oparada1988_DeckSports::TeamScoreAction",
                             "settings": {
-                                "mode": "drive_pp"
+                                "side": "home"
                             }
                         }
                     ],
@@ -127,9 +127,9 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::TeamScoreAction",
+                            "id": "com_oparada1988_DeckSports::SituationAction",
                             "settings": {
-                                "side": "home"
+                                "mode": "venue_tv"
                             }
                         }
                     ],
@@ -488,8 +488,10 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::GameHubAction",
-                            "settings": {}
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "drive_pp"
+                            }
                         }
                     ],
                     "image-control-action": 0,
@@ -652,8 +654,10 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::GameHubReturnAction",
-                            "settings": {}
+                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "settings": {
+                                "mode": "drive_pp"
+                            }
                         }
                     ],
                     "image-control-action": 0,
