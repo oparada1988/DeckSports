@@ -5,6 +5,7 @@ Automatically pairs with the nearest Game Hub on the same row and defaults media
 """
 
 import os
+from functools import lru_cache
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -23,6 +24,7 @@ SIDE_OPTIONS = [
     ("Team B / Home (Host Team)", "home"),
 ]
 
+@lru_cache(maxsize=32)
 def get_bundled_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     bundled_font = os.path.join(plugin_dir, "assets", "fonts", "ScoreFont-Bold.ttf")
@@ -144,6 +146,8 @@ class TeamScoreAction(ActionBase):
 
     # --- Canvas Rendering with Pillow ---
     def update_display(self):
+        if not self.get_is_present():
+            return
         self._ensure_media_control()
 
         state, team = self._resolve_team_and_state()

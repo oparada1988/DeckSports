@@ -4,6 +4,7 @@ DeckSports GameHubReturnAction
 """
 
 import os
+from functools import lru_cache
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -14,6 +15,7 @@ from src.backend.PluginManager.ActionBase import ActionBase
 from src.backend.DeckManagement.InputIdentifier import Input
 import globals as gl
 
+@lru_cache(maxsize=32)
 def get_bundled_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     bundled_font = os.path.join(plugin_dir, "assets", "fonts", "ScoreFont-Bold.ttf")
@@ -118,6 +120,8 @@ class GameHubReturnAction(ActionBase):
                     return
 
     def update_display(self):
+        if not self.get_is_present():
+            return
         self._ensure_media_control()
 
         img = Image.new("RGBA", (100, 100), (20, 22, 28, 255))

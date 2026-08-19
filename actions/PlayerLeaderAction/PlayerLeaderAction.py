@@ -4,6 +4,7 @@ Displays category leader card with circular athlete headshots, names, and live p
 """
 
 import os
+from functools import lru_cache
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -28,6 +29,7 @@ CATEGORY_OPTIONS = [
     ("Tertiary Leader (Receiving / Defense / Assists)", 2),
 ]
 
+@lru_cache(maxsize=32)
 def get_bundled_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     bundled_font = os.path.join(plugin_dir, "assets", "fonts", "ScoreFont-Bold.ttf")
@@ -145,6 +147,8 @@ class PlayerLeaderAction(ActionBase):
         self.update_display()
 
     def update_display(self):
+        if not self.get_is_present():
+            return
         self._ensure_media_control()
 
         my_coords = getattr(self.input_ident, "coords", None)
