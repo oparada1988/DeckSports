@@ -116,7 +116,10 @@ class GameHubAction(ActionBase):
         refresh = settings.get("refresh_seconds", 15)
 
         dash_target = self.plugin_base.sports_service.get_active_dashboard_target()
-        if dash_target and not settings.get("league"):
+        page_path = getattr(self.page, "json_path", "") if getattr(self, "page", None) else ""
+        is_hub_page = "GameHub" in os.path.basename(str(page_path))
+
+        if dash_target and (is_hub_page or not settings.get("league")):
             league, team_id = dash_target
             settings["league"] = league
             settings["team_id"] = team_id
@@ -124,7 +127,7 @@ class GameHubAction(ActionBase):
         elif not team_id:
             teams = self.plugin_base.sports_service.get_teams(league)
             if teams:
-                team_id = teams[0]["id"]
+                team_id = str(teams[0]["id"])
                 settings["team_id"] = team_id
                 self.set_settings(settings)
 
@@ -134,6 +137,7 @@ class GameHubAction(ActionBase):
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
 
         self.plugin_base.sports_service.fetch_async(league, team_id, force=True, refresh_seconds=refresh)
+        self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=True)
         GLib.idle_add(self.update_display)
 
     def on_remove(self):
@@ -145,8 +149,13 @@ class GameHubAction(ActionBase):
 
     def on_tick(self):
         settings = self.get_settings()
-        league = settings.get("league", "NFL")
-        team_id = str(settings.get("team_id", ""))
+        dash_target = self.plugin_base.sports_service.get_active_dashboard_target()
+        page_path = getattr(self.page, "json_path", "") if getattr(self, "page", None) else ""
+        if dash_target and "GameHub" in os.path.basename(str(page_path)):
+            league, team_id = dash_target
+        else:
+            league = settings.get("league", "NFL")
+            team_id = str(settings.get("team_id", ""))
         refresh = settings.get("refresh_seconds", 15)
         if league and team_id:
             self.plugin_base.sports_service.fetch_async(league, team_id, force=False, refresh_seconds=refresh)
@@ -466,7 +475,7 @@ class GameHubAction(ActionBase):
 
             self._populate_team_dropdown(new_league)
             if self._current_team_list:
-                first_team_id = self._current_team_list[0]["id"]
+                first_team_id = str(self._current_team_list[0]["id"])
                 settings["team_id"] = first_team_id
             self.set_settings(settings)
 
@@ -476,6 +485,7 @@ class GameHubAction(ActionBase):
             self.plugin_base.sports_service.set_active_dashboard_target(new_league, team_id)
             self.plugin_base.sports_service.register_hub(id(self), coords, new_league, team_id, display_mode, action_obj=self)
             self.plugin_base.sports_service.fetch_async(new_league, team_id, force=True)
+            self.plugin_base.sports_service.fetch_game_summary(new_league, team_id, force=True)
             self.plugin_base.sports_service.notify_all()
             self.update_display()
 
@@ -496,6 +506,7 @@ class GameHubAction(ActionBase):
             self.plugin_base.sports_service.set_active_dashboard_target(league, team_id)
             self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode, action_obj=self)
             self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
+            self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=True)
             self.plugin_base.sports_service.notify_all()
             self.update_display()
 

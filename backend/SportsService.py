@@ -267,12 +267,19 @@ class SportsService:
 
     def notify_all(self):
         with self._lock:
-            items = list(self.game_states.items())
             callbacks = list(self.listeners)
-        for (l, t), st in items:
+            items = list(self.game_states.items())
+        if items:
+            for (l, t), st in items:
+                for cb in callbacks:
+                    try:
+                        cb(l, t, st)
+                    except Exception:
+                        pass
+        else:
             for cb in callbacks:
                 try:
-                    cb(l, t, st)
+                    cb("", "", GameState())
                 except Exception:
                     pass
 
@@ -739,6 +746,8 @@ class SportsService:
 
         if matched_event and not is_stale_final:
             self._parse_event_into_state(matched_event, new_state)
+            if new_state.event_id:
+                self.fetch_game_summary(league_key, str(team_id), force=False)
         else:
             self._parse_off_game_state(new_state)
 
@@ -769,7 +778,7 @@ class SportsService:
         if new_state.home_team.logo_url:
             self.get_image(new_state.home_team.logo_url)
 
-        GLib.idle_add(lambda: self.notify_listeners(league_key, str(team_id)))
+        GLib.idle_add(lambda l=league_key, t=str(team_id): self.notify_listeners(l, t))
 
     def _parse_event_into_state(self, ev: dict, state: GameState):
         state.event_id = str(ev.get("id", ""))
@@ -874,14 +883,17 @@ class SportsService:
         teams = self.get_teams(state.league_key)
         my_team = next((t for t in teams if str(t["id"]) == str(state.followed_team_id)), None)
         if my_team:
-            state.away_team = TeamInfo(
+            t_info = TeamInfo(
                 id=my_team["id"],
                 name=my_team["name"],
                 abbreviation=my_team["abbreviation"],
+                short_name=my_team.get("short_name", my_team["name"]),
                 logo_url=my_team["logo_url"],
                 color=hex_to_rgba(my_team["color"]),
                 alternate_color=hex_to_rgba(my_team["alternate_color"])
             )
+            state.away_team = t_info
+            state.home_team = t_info
         state.status_state = "off"
         state.status_detail = "Off Season / Bye"
 

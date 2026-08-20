@@ -67,6 +67,10 @@ class ScoringSummaryAction(ActionBase):
     def on_ready(self):
         self._ensure_media_control()
         self.plugin_base.sports_service.add_listener(self.on_game_state_updated)
+        my_coords = getattr(self.input_ident, "coords", None)
+        hub_league, hub_team, _ = self.plugin_base.sports_service.get_nearest_hub_target(my_coords)
+        if hub_league and hub_team:
+            self.plugin_base.sports_service.fetch_game_summary(hub_league, hub_team, force=False)
         GLib.idle_add(self.update_display)
 
     def on_remove(self):
