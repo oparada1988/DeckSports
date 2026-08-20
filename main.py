@@ -6,6 +6,10 @@ Live sports scoreboard, game clock, and full-screen Game Hub dashboard across NF
 import os
 import shutil
 import globals as gl
+import gi
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Gtk
 
 from src.backend.PluginManager.PluginBase import PluginBase
 from src.backend.PluginManager.ActionHolder import ActionHolder
@@ -50,6 +54,7 @@ class DeckSports(PluginBase):
             action_base=GameHubAction,
             action_id_suffix="GameHubAction",
             action_name="Game Hub / Clock",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "game_hub_clock.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -64,6 +69,7 @@ class DeckSports(PluginBase):
             action_base=TeamScoreAction,
             action_id_suffix="TeamScoreAction",
             action_name="Team Score / Logo",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "team_score_logo.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -78,6 +84,7 @@ class DeckSports(PluginBase):
             action_base=GameHubReturnAction,
             action_id_suffix="GameHubReturnAction",
             action_name="Game Hub Return / Exit",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "action_return.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -92,6 +99,7 @@ class DeckSports(PluginBase):
             action_base=LineScoreAction,
             action_id_suffix="LineScoreAction",
             action_name="Line Score / Period Breakdown",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "action_linescore.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -106,6 +114,7 @@ class DeckSports(PluginBase):
             action_base=PlayerLeaderAction,
             action_id_suffix="PlayerLeaderAction",
             action_name="Player Leader Card",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "action_leader.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -120,6 +129,7 @@ class DeckSports(PluginBase):
             action_base=SituationAction,
             action_id_suffix="SituationAction",
             action_name="Situational Radar / Info",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "action_situation.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -134,6 +144,7 @@ class DeckSports(PluginBase):
             action_base=TeamStatsCompareAction,
             action_id_suffix="TeamStatsCompareAction",
             action_name="Team Stats Comparison",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "action_stats.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -148,6 +159,7 @@ class DeckSports(PluginBase):
             action_base=ScoringSummaryAction,
             action_id_suffix="ScoringSummaryAction",
             action_name="Scoring Summary / Drives",
+            icon=Gtk.Image.new_from_file(os.path.join(self.PATH, "assets", "action_scoring.png")),
             action_support={
                 Input.Key: ActionInputSupport.SUPPORTED,
                 Input.Dial: ActionInputSupport.UNSUPPORTED,
@@ -177,6 +189,12 @@ class DeckSports(PluginBase):
             plugin_version="1.0.0",
             app_version="1.5.0-beta"
         )
+
+    def get_selector_icon(self) -> Gtk.Widget:
+        icon_path = os.path.join(self.PATH, "assets", "plugin_icon.png")
+        if os.path.exists(icon_path):
+            return Gtk.Image.new_from_file(icon_path)
+        return super().get_selector_icon()
 
     def _auto_provision_pages(self):
         try:
