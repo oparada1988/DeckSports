@@ -295,8 +295,8 @@ class CelebrationManager:
                     font=font_sub
                 )
 
+                # 1. Direct hardware native USB sweep (physical Stream Deck)
                 if direct_hardware:
-                    # Direct hardware native USB sweep: convert full canvas to RGB once per frame to eliminate redundant per-tile allocations
                     rgb_canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
                     rgb_canvas.paste(frame_canvas, (0, 0), frame_canvas)
                     for ky in range(rows):
@@ -310,24 +310,24 @@ class CelebrationManager:
                                 deck.set_key_image(key_idx, native_img)
                             except Exception:
                                 pass
-                else:
-                    # Fallback path for mock / virtual controllers
-                    tiles = {}
-                    for ky in range(rows):
-                        for kx in range(cols):
-                            tiles[(kx, ky)] = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
 
-                    def _push_tiles(t_dict):
-                        active_page = getattr(controller, "active_page", None)
-                        if active_page:
-                            for act in active_page.get_all_actions():
-                                coords = getattr(act.input_ident, "coords", None)
-                                if coords and len(coords) >= 2:
-                                    t = t_dict.get((coords[0], coords[1]))
-                                    if t:
-                                        act.set_media(image=t)
+                # 2. Desktop UI action preview mirroring (StreamController app window)
+                tiles = {}
+                for ky in range(rows):
+                    for kx in range(cols):
+                        tiles[(kx, ky)] = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
 
-                    GLib.idle_add(_push_tiles, tiles)
+                def _push_tiles(t_dict):
+                    active_page = getattr(controller, "active_page", None)
+                    if active_page:
+                        for act in active_page.get_all_actions():
+                            coords = getattr(act.input_ident, "coords", None)
+                            if coords and len(coords) >= 2:
+                                t = t_dict.get((coords[0], coords[1]))
+                                if t:
+                                    act.set_media(image=t)
+
+                GLib.idle_add(_push_tiles, tiles)
 
                 target_time += frame_duration
                 sleep_delay = target_time - time.perf_counter()
