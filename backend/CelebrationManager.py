@@ -296,12 +296,12 @@ class CelebrationManager:
                 )
 
                 if direct_hardware:
-                    # Direct hardware native USB sweep: zero GTK UI overhead and zero inter-key tearing
+                    # Direct hardware native USB sweep: convert full canvas to RGB once per frame to eliminate redundant per-tile allocations
+                    rgb_canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
+                    rgb_canvas.paste(frame_canvas, (0, 0), frame_canvas)
                     for ky in range(rows):
                         for kx in range(cols):
-                            tile = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
-                            rgb_tile = Image.new("RGB", (100, 100), (0, 0, 0))
-                            rgb_tile.paste(tile, (0, 0), tile)
+                            rgb_tile = rgb_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
                             if rotation:
                                 rgb_tile = rgb_tile.rotate(rotation)
                             try:
@@ -340,7 +340,35 @@ class CelebrationManager:
             with self._lock:
                 self.is_animating = False
                 self._cancel_requested = False
-            GLib.idle_add(self.sports_service.notify_all)
+            GLib.idle_add(self._restore_deck_state, controller)
+
+    def _restore_deck_state(self, controller):
+        """Invalidates cached hardware image hashes and forces full-matrix scoreboard refresh."""
+        try:
+            if controller and hasattr(controller, "inputs"):
+                for input_type in controller.inputs:
+                    for inp in controller.inputs[input_type]:
+                        if hasattr(inp, "_last_img_hash"):
+                            inp._last_img_hash = None
+
+            self.sports_service.notify_all()
+
+            active_page = getattr(controller, "active_page", None) if controller else None
+            if active_page and hasattr(active_page, "get_all_actions"):
+                for act in active_page.get_all_actions():
+                    if hasattr(act, "update_display") and callable(act.update_display):
+                        try:
+                            act.update_display()
+                        except Exception:
+                            pass
+
+            if controller and hasattr(controller, "update_all_inputs"):
+                try:
+                    controller.update_all_inputs()
+                except Exception:
+                    pass
+        except Exception as e:
+            log.error(f"Error restoring deck state after celebration: {e}")
 
     # -------------------------------------------------------------------------
     # Sport-Specific Background Renderers

@@ -120,6 +120,8 @@ class SportsService:
         self.team_cache: dict[str, list[dict]] = {}
         self.image_cache: dict[str, Image.Image] = {}
         self.headshot_cache: dict[str, Image.Image] = {}
+        self.session = requests.Session()
+        self._in_flight_image_fetches: set[str] = set()
 
         # Multi-game state dictionary keyed by (league_key, team_id)
         self.game_states: dict[tuple[str, str], GameState] = {}
@@ -299,8 +301,9 @@ class SportsService:
             return None
 
         cache_key = f"{url}_{max_size[0]}x{max_size[1]}"
-        if cache_key in self.image_cache:
-            return self.image_cache[cache_key]
+        with self._lock:
+            if cache_key in self.image_cache:
+                return self.image_cache[cache_key]
 
         # Check local disk cache
         url_hash = hashlib.md5(url.encode()).hexdigest()
@@ -310,23 +313,34 @@ class SportsService:
             try:
                 img = Image.open(file_path).convert("RGBA")
                 img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                self.image_cache[cache_key] = img
+                with self._lock:
+                    self.image_cache[cache_key] = img
                 return img
             except Exception:
                 pass
 
+        # Deduplicate concurrent in-flight fetches for the same URL
+        with self._lock:
+            if url in self._in_flight_image_fetches:
+                return None
+            self._in_flight_image_fetches.add(url)
+
         # If not cached on disk, fetch asynchronously without blocking the UI thread
         def _fetch_img_bg():
             try:
-                resp = requests.get(url, timeout=6)
+                resp = self.session.get(url, timeout=6)
                 if resp.status_code == 200:
                     img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
                     img.save(file_path, "PNG")
                     img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                    self.image_cache[cache_key] = img
+                    with self._lock:
+                        self.image_cache[cache_key] = img
                     GLib.idle_add(self.notify_all)
             except Exception:
                 pass
+            finally:
+                with self._lock:
+                    self._in_flight_image_fetches.discard(url)
 
         threading.Thread(target=_fetch_img_bg, daemon=True).start()
         return None
@@ -342,8 +356,9 @@ class SportsService:
             return None
 
         cache_key = f"hs_{url}_{max_size[0]}x{max_size[1]}"
-        if cache_key in self.headshot_cache:
-            return self.headshot_cache[cache_key]
+        with self._lock:
+            if cache_key in self.headshot_cache:
+                return self.headshot_cache[cache_key]
 
         # Check local disk cache
         url_hash = hashlib.md5(url.encode()).hexdigest()
@@ -359,15 +374,22 @@ class SportsService:
                 fitted = ImageOps.fit(raw_img, max_size, centering=(0.5, 0.5))
                 fitted.putalpha(mask)
 
-                self.headshot_cache[cache_key] = fitted
+                with self._lock:
+                    self.headshot_cache[cache_key] = fitted
                 return fitted
             except Exception:
                 pass
 
+        # Deduplicate concurrent in-flight fetches for the same URL
+        with self._lock:
+            if url in self._in_flight_image_fetches:
+                return None
+            self._in_flight_image_fetches.add(url)
+
         # If not cached on disk, fetch asynchronously on background daemon thread
         def _fetch_headshot_bg():
             try:
-                resp = requests.get(url, timeout=6)
+                resp = self.session.get(url, timeout=6)
                 if resp.status_code == 200:
                     raw_img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
                     raw_img.save(file_path, "PNG")
@@ -379,10 +401,14 @@ class SportsService:
                     fitted = ImageOps.fit(raw_img, max_size, centering=(0.5, 0.5))
                     fitted.putalpha(mask)
 
-                    self.headshot_cache[cache_key] = fitted
+                    with self._lock:
+                        self.headshot_cache[cache_key] = fitted
                     GLib.idle_add(self.notify_all)
             except Exception:
                 pass
+            finally:
+                with self._lock:
+                    self._in_flight_image_fetches.discard(url)
 
         threading.Thread(target=_fetch_headshot_bg, daemon=True).start()
         return None
@@ -434,7 +460,7 @@ class SportsService:
                 return
 
             url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/summary?event={event_id}"
-            resp = requests.get(url, timeout=8)
+            resp = self.session.get(url, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 summary_obj = self._parse_summary_payload(league_key, team_id, event_id, data)
@@ -603,7 +629,7 @@ class SportsService:
 
         url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/teams?limit=500"
         try:
-            resp = requests.get(url, timeout=8)
+            resp = self.session.get(url, timeout=8)
             if resp.status_code == 200:
                 data = resp.json()
                 team_list = []
@@ -664,7 +690,7 @@ class SportsService:
                 return
 
             scoreboard_url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/scoreboard"
-            r = requests.get(scoreboard_url, timeout=8)
+            r = self.session.get(scoreboard_url, timeout=8)
             if r.status_code == 200:
                 data = r.json()
                 self.league_scoreboard_cache[league_key] = {
@@ -862,7 +888,7 @@ class SportsService:
 
         url = f"https://site.api.espn.com/apis/site/v2/sports/{cfg.sport_slug}/{cfg.league_slug}/teams/{state.followed_team_id}/schedule"
         try:
-            r = requests.get(url, timeout=6)
+            r = self.session.get(url, timeout=6)
             if r.status_code == 200:
                 events = r.json().get("events", [])
                 now = datetime.now(timezone.utc)
