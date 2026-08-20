@@ -175,10 +175,11 @@ class CelebrationManager:
                 return
 
             cols, rows = 8, 4
+            deck = getattr(controller, "deck", None)
             key_count = 32
-            if hasattr(controller, "deck") and hasattr(controller.deck, "key_count"):
+            if deck and hasattr(deck, "key_count"):
                 try:
-                    key_count = controller.deck.key_count()
+                    key_count = deck.key_count()
                 except Exception:
                     pass
             elif hasattr(controller, "inputs") and hasattr(controller.inputs, "__contains__"):
@@ -192,8 +193,8 @@ class CelebrationManager:
             canvas_w = cols * 100
             canvas_h = rows * 100
 
-            total_frames = 36
-            fps = 12
+            total_frames = 45
+            fps = 15
             frame_duration = 1.0 / fps
 
             logo_img = None
@@ -218,8 +219,27 @@ class CelebrationManager:
             elif sport_slug == "soccer":
                 sport_renderer = self._draw_soccer_background
 
+            # Check if direct hardware USB pushing is available
+            pil_helper = None
+            try:
+                from StreamDeck.ImageHelpers import PILHelper
+                pil_helper = PILHelper
+            except Exception:
+                pass
+
+            direct_hardware = bool(deck and hasattr(deck, "set_key_image") and pil_helper)
+            rotation = deck.get_rotation() if (deck and hasattr(deck, "get_rotation")) else 0
+
+            # Monotonic high-precision delta frame scheduler
+            target_time = time.perf_counter()
+
             for frame_idx in range(total_frames):
                 if self._cancel_requested:
+                    break
+
+                # Abort if active page has changed away from GameHub
+                current_page = getattr(controller, "active_page", None)
+                if not current_page or ("GameHub" not in str(getattr(current_page, "name", "")) and "GameHub" not in str(getattr(current_page, "json_path", ""))):
                     break
 
                 frame_canvas = Image.new("RGBA", (canvas_w, canvas_h), (16, 18, 24, 255))
@@ -275,24 +295,44 @@ class CelebrationManager:
                     font=font_sub
                 )
 
-                # Slice full canvas into 100x100 tiles
-                tiles = {}
-                for ky in range(rows):
-                    for kx in range(cols):
-                        tiles[(kx, ky)] = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
+                if direct_hardware:
+                    # Direct hardware native USB sweep: zero GTK UI overhead and zero inter-key tearing
+                    for ky in range(rows):
+                        for kx in range(cols):
+                            tile = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
+                            rgb_tile = Image.new("RGB", (100, 100), (0, 0, 0))
+                            rgb_tile.paste(tile, (0, 0), tile)
+                            if rotation:
+                                rgb_tile = rgb_tile.rotate(rotation)
+                            try:
+                                native_img = pil_helper.to_native_key_format(deck, rgb_tile)
+                                key_idx = ky * cols + kx
+                                deck.set_key_image(key_idx, native_img)
+                            except Exception:
+                                pass
+                else:
+                    # Fallback path for mock / virtual controllers
+                    tiles = {}
+                    for ky in range(rows):
+                        for kx in range(cols):
+                            tiles[(kx, ky)] = frame_canvas.crop((kx * 100, ky * 100, (kx + 1) * 100, (ky + 1) * 100))
 
-                def _push_tiles(t_dict):
-                    active_page = getattr(controller, "active_page", None)
-                    if active_page:
-                        for act in active_page.get_all_actions():
-                            coords = getattr(act.input_ident, "coords", None)
-                            if coords and len(coords) >= 2:
-                                t = t_dict.get((coords[0], coords[1]))
-                                if t:
-                                    act.set_media(image=t)
+                    def _push_tiles(t_dict):
+                        active_page = getattr(controller, "active_page", None)
+                        if active_page:
+                            for act in active_page.get_all_actions():
+                                coords = getattr(act.input_ident, "coords", None)
+                                if coords and len(coords) >= 2:
+                                    t = t_dict.get((coords[0], coords[1]))
+                                    if t:
+                                        act.set_media(image=t)
 
-                GLib.idle_add(_push_tiles, tiles)
-                time.sleep(frame_duration)
+                    GLib.idle_add(_push_tiles, tiles)
+
+                target_time += frame_duration
+                sleep_delay = target_time - time.perf_counter()
+                if sleep_delay > 0:
+                    time.sleep(sleep_delay)
 
         except Exception as e:
             log.error(f"Error in score celebration animation: {e}")
