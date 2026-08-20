@@ -761,13 +761,15 @@ class SportsService:
                 old_sc = int(old_state.away_team.score or 0) if is_away else int(old_state.home_team.score or 0)
                 new_sc = int(new_state.away_team.score or 0) if is_away else int(new_state.home_team.score or 0)
                 if new_sc > old_sc:
+                    score_delta = new_sc - old_sc
                     team = new_state.away_team if is_away else new_state.home_team
                     self.celebration_manager.trigger(
                         league_key=league_key,
                         team_name=team.name or "Followed Team",
                         team_abbrev=team.abbreviation or "TEAM",
                         primary_color=team.color or (0, 53, 148, 255),
-                        alt_color=team.alternate_color or (200, 205, 215, 255)
+                        alt_color=team.alternate_color or (200, 205, 215, 255),
+                        score_delta=score_delta
                     )
             except Exception:
                 pass
