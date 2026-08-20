@@ -109,6 +109,7 @@ DeckSports features a sport-adaptive engine supporting 8 major leagues:
 
 * **Oscar Parada** ([@oparada1988](https://github.com/oparada1988)) — Lead Developer
 * **Matt** ([@Mattdubs9699](https://github.com/Mattdubs9699)) — Co-Creator, Feature Architecture & Sports API Collaboration
+* **AI Assistance** — Developed with AI pair programming assistance for architecture design, API normalization, performance optimizations, and UI assets.
 * Built for the **[StreamController](https://github.com/StreamController/StreamController)** application by Core447.
 
 ---
