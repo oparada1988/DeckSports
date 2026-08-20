@@ -343,16 +343,22 @@ class CelebrationManager:
             GLib.idle_add(self._restore_deck_state, controller)
 
     def _restore_deck_state(self, controller):
-        """Invalidates cached hardware image hashes and forces full-matrix scoreboard refresh."""
+        """Invalidates cached hardware image hashes and forces full-matrix scoreboard refresh via direct hardware push."""
         try:
-            if controller and hasattr(controller, "inputs"):
-                for input_type in controller.inputs:
-                    for inp in controller.inputs[input_type]:
-                        if hasattr(inp, "_last_img_hash"):
-                            inp._last_img_hash = None
+            pil_helper = None
+            try:
+                from StreamDeck.ImageHelpers import PILHelper
+                pil_helper = PILHelper
+            except Exception:
+                pass
 
+            deck = getattr(controller, "deck", None) if controller else None
+            rotation = deck.get_rotation() if (deck and hasattr(deck, "get_rotation")) else 0
+
+            # 1. Update data models across all listeners
             self.sports_service.notify_all()
 
+            # 2. Invoke update_display on every action on the active page to compute fresh Pillow images
             active_page = getattr(controller, "active_page", None) if controller else None
             if active_page and hasattr(active_page, "get_all_actions"):
                 for act in active_page.get_all_actions():
@@ -361,6 +367,39 @@ class CelebrationManager:
                             act.update_display()
                         except Exception:
                             pass
+
+            # 3. Direct hardware sweep: push composed key images directly to physical Stream Deck USB
+            if deck and hasattr(deck, "set_key_image") and pil_helper and controller and hasattr(controller, "inputs"):
+                try:
+                    from src.backend.DeckManagement.InputIdentifier import Input
+                    key_inputs = controller.inputs.get(Input.Key, [])
+                except Exception:
+                    key_inputs = []
+                    if hasattr(controller, "inputs"):
+                        for t in controller.inputs:
+                            if "key" in str(t).lower():
+                                key_inputs.extend(controller.inputs[t])
+
+                for key in key_inputs:
+                    try:
+                        if hasattr(key, "get_current_image"):
+                            img = key.get_current_image()
+                            if img:
+                                rgb_img = Image.new("RGB", img.size, (0, 0, 0))
+                                rgb_img.paste(img, (0, 0), img)
+                                if rotation:
+                                    rgb_img = rgb_img.rotate(rotation)
+                                native_img = pil_helper.to_native_key_format(deck, rgb_img)
+                                deck.set_key_image(key.index, native_img)
+                    except Exception:
+                        pass
+
+            # 4. Clear cached image hashes on controller inputs so subsequent normal updates succeed
+            if controller and hasattr(controller, "inputs"):
+                for input_type in controller.inputs:
+                    for inp in controller.inputs[input_type]:
+                        if hasattr(inp, "_last_img_hash"):
+                            inp._last_img_hash = None
 
             if controller and hasattr(controller, "update_all_inputs"):
                 try:
