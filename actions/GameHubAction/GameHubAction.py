@@ -84,6 +84,7 @@ class GameHubAction(ActionBase):
         self._team_model: Gtk.StringList | None = None
         self._current_team_list: list[dict] = []
         self._is_updating_ui: bool = False
+        self._clock_timer_id: int | None = None
 
     def _ensure_media_control(self):
         try:
@@ -103,6 +104,23 @@ class GameHubAction(ActionBase):
                         pm.set_image_control_index(own_idx, reload_pages=False, reload_self=False)
         except Exception:
             pass
+
+    def _manage_clock_timer(self, is_live: bool):
+        if is_live and self._clock_timer_id is None:
+            self._clock_timer_id = GLib.timeout_add(1000, self._on_clock_tick)
+        elif not is_live and self._clock_timer_id is not None:
+            try:
+                GLib.source_remove(self._clock_timer_id)
+            except Exception:
+                pass
+            self._clock_timer_id = None
+
+    def _on_clock_tick(self) -> bool:
+        if not self.get_is_present():
+            self._clock_timer_id = None
+            return False
+        self.update_display()
+        return True
 
     def on_ready(self):
         self._ensure_media_control()
@@ -141,6 +159,12 @@ class GameHubAction(ActionBase):
         GLib.idle_add(self.update_display)
 
     def on_remove(self):
+        if self._clock_timer_id is not None:
+            try:
+                GLib.source_remove(self._clock_timer_id)
+            except Exception:
+                pass
+            self._clock_timer_id = None
         self.plugin_base.sports_service.unregister_hub(id(self))
         self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
 
@@ -151,14 +175,22 @@ class GameHubAction(ActionBase):
         settings = self.get_settings()
         dash_target = self.plugin_base.sports_service.get_active_dashboard_target()
         page_path = getattr(self.page, "json_path", "") if getattr(self, "page", None) else ""
-        if dash_target and "GameHub" in os.path.basename(str(page_path)):
+        is_hub_page = bool(dash_target and "GameHub" in os.path.basename(str(page_path)))
+        if is_hub_page:
             league, team_id = dash_target
         else:
             league = settings.get("league", "NFL")
             team_id = str(settings.get("team_id", ""))
+
         refresh = settings.get("refresh_seconds", 15)
+        state = self.plugin_base.sports_service.get_game_state(league, team_id)
+        if state and state.status_state == "in":
+            refresh = 5
+
         if league and team_id:
             self.plugin_base.sports_service.fetch_async(league, team_id, force=False, refresh_seconds=refresh)
+            if is_hub_page and state and state.status_state == "in" and state.event_id:
+                self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=False, refresh_seconds=5)
 
     def get_deck_controller_to_use(self):
         if getattr(self, "deck_controller", None):
@@ -396,6 +428,17 @@ class GameHubAction(ActionBase):
         test_row.add_suffix(test_btn)
         rows.append(test_row)
 
+        # 9. Test Victory Jumbotron Row
+        test_vic_row = Adw.ActionRow(
+            title="Victory Celebration Preview",
+            subtitle="Trigger a 4-second victory confetti & fireworks animation"
+        )
+        test_vic_btn = Gtk.Button(label="Play Victory")
+        test_vic_btn.set_valign(Gtk.Align.CENTER)
+        test_vic_btn.connect("clicked", self._on_test_victory_clicked)
+        test_vic_row.add_suffix(test_vic_btn)
+        rows.append(test_vic_row)
+
         return rows
 
     def _on_hold_mode_changed(self, row, _pspec):
@@ -439,6 +482,37 @@ class GameHubAction(ActionBase):
                 team_abbrev=team_abbrev,
                 primary_color=p_color,
                 alt_color=alt_color
+            )
+
+    def _on_test_victory_clicked(self, _btn):
+        settings = self.get_settings()
+        coords = getattr(self.input_ident, "coords", None)
+        hub_league, hub_team_id, _ = self.plugin_base.sports_service.get_nearest_hub_target(coords)
+        league = settings.get("league") or hub_league
+        team_id = str(settings.get("team_id") or hub_team_id)
+
+        state = self.plugin_base.sports_service.get_game_state(league, team_id)
+        team = state.away_team if (state.followed_team_id and str(state.away_team.id) == str(state.followed_team_id)) else state.home_team
+        opp = state.home_team if team == state.away_team else state.away_team
+        team_name = team.name if team.name else "Followed Team"
+        team_abbrev = team.abbreviation if team.abbreviation else "TEAM"
+        p_color = team.color if team.color else (0, 53, 148, 255)
+        alt_color = team.alternate_color if team.alternate_color else (200, 205, 215, 255)
+
+        my_sc = team.score if team.score else "28"
+        opp_sc = opp.score if opp.score else "21"
+        opp_abbrev = opp.abbreviation if opp.abbreviation else "OPP"
+
+        if hasattr(self.plugin_base.sports_service, "celebration_manager"):
+            self.plugin_base.sports_service.celebration_manager.trigger_victory(
+                league_key=league,
+                team_name=team_name,
+                team_abbrev=team_abbrev,
+                primary_color=p_color,
+                alt_color=alt_color,
+                my_score=my_sc,
+                opp_abbrev=opp_abbrev,
+                opp_score=opp_sc
             )
 
     def _on_tap_mode_changed(self, row, _pspec):
@@ -546,6 +620,10 @@ class GameHubAction(ActionBase):
         state = self.plugin_base.sports_service.get_game_state(league, team_id)
         has_score_keys = self.plugin_base.sports_service.has_score_actions()
 
+        # Dynamically manage 1-second ticking timer for live game state
+        is_live_clock = (state.status_state == "in" and getattr(state, "clock_is_running", False))
+        self._manage_clock_timer(is_live_clock)
+
         img = Image.new("RGBA", (100, 100), (20, 22, 28, 255))
         draw = ImageDraw.Draw(img)
 
@@ -565,8 +643,8 @@ class GameHubAction(ActionBase):
 
         # 2. Body State Rendering
         if state.status_state == "in":
-            # LIVE GAME STATE
-            clock_text = state.clock if state.clock else state.period_text
+            # LIVE GAME STATE (With smooth 1-second interpolated ticking clock)
+            clock_text = self.plugin_base.sports_service.get_interpolated_clock(state)
             period_str = f"Q{state.period}" if state.period and state.league_key in ("NFL", "NBA", "UFL") else state.period_text
 
             font_period = get_bundled_font(13)
@@ -597,18 +675,35 @@ class GameHubAction(ActionBase):
 
         elif state.status_state == "post":
             # FINAL / POST GAME
+            is_followed_winner = False
+            if state.followed_team_id and state.away_team.score and state.home_team.score:
+                try:
+                    is_away = str(state.away_team.id) == str(state.followed_team_id)
+                    my_sc = int(state.away_team.score if is_away else state.home_team.score)
+                    opp_sc = int(state.home_team.score if is_away else state.away_team.score)
+                    if my_sc > opp_sc:
+                        is_followed_winner = True
+                except Exception:
+                    pass
+
             if has_score_keys:
-                # 3-BUTTON SCOREBOARD MODE: Clean, bold "FINAL" in red letters without redundant scores
-                font_final = get_bundled_font(21)
-                final_text = "FINAL / OT" if ("ot" in state.status_detail.lower() or "overtime" in state.status_detail.lower()) else "FINAL"
-                draw.text((50, 62), final_text, fill=(255, 65, 65, 255), anchor="mm", font=font_final)
+                # 3-BUTTON SCOREBOARD MODE: Clean bold badge
+                if is_followed_winner:
+                    font_final = get_bundled_font(17)
+                    font_sub = get_bundled_font(10)
+                    draw.text((50, 46), "VICTORY", fill=(255, 220, 50, 255), anchor="mm", font=font_final)
+                    draw.text((50, 68), "FINAL", fill=(170, 210, 255, 255), anchor="mm", font=font_sub)
+                else:
+                    font_final = get_bundled_font(21)
+                    final_text = "FINAL / OT" if ("ot" in state.status_detail.lower() or "overtime" in state.status_detail.lower()) else "FINAL"
+                    draw.text((50, 62), final_text, fill=(255, 65, 65, 255), anchor="mm", font=font_final)
             else:
                 # STANDALONE 1-BUTTON MODE: Show status, scores, and mini logos
                 font_status = get_bundled_font(13)
                 font_score = get_bundled_font(15)
                 font_det = get_bundled_font(11)
 
-                draw.text((50, 41), "FINAL", fill=(255, 75, 75, 255), anchor="mm", font=font_status)
+                draw.text((50, 41), "VICTORY" if is_followed_winner else "FINAL", fill=(255, 220, 50, 255) if is_followed_winner else (255, 75, 75, 255), anchor="mm", font=font_status)
 
                 away_logo = self.plugin_base.sports_service.get_image(state.away_team.logo_url, max_size=(18, 18))
                 if away_logo:

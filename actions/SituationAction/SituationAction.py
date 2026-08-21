@@ -22,7 +22,9 @@ SITUATION_MODES = [
     ("Down & Dist / Count & Outs", "down_dist"),
     ("Ball Spot / Red Zone / Base Runners", "ball_spot"),
     ("Drive Info / Power Play / Dominance", "drive_pp"),
-    ("Venue / TV / Weather", "venue_tv"),
+    ("Venue / Stadium", "venue"),
+    ("TV / Broadcast", "broadcast"),
+    ("Venue / TV / Weather (Combined)", "venue_tv"),
 ]
 
 @lru_cache(maxsize=32)
@@ -48,6 +50,45 @@ def get_bundled_font(size: int = 14) -> ImageFont.FreeTypeFont | ImageFont.Image
             except Exception:
                 pass
     return ImageFont.load_default()
+
+def format_fitted_text(text: str, max_width: int = 90, max_size: int = 14, min_size: int = 8) -> tuple[str, ImageFont.FreeTypeFont | ImageFont.ImageFont]:
+    """
+    Returns the (cleanly fitted, possibly ellipsized) text and the largest font size
+    that fits completely within max_width pixels without overflowing the key canvas.
+    """
+    if not text:
+        return "", get_bundled_font(max_size)
+
+    # 1. Step down font size from max_size to min_size
+    for sz in range(max_size, min_size - 1, -1):
+        f = get_bundled_font(sz)
+        try:
+            bbox = f.getbbox(text)
+            w = bbox[2] - bbox[0]
+            if w <= max_width:
+                return text, f
+        except Exception:
+            pass
+
+    # 2. At min_size, trim and ellipsize progressively until it fits
+    min_f = get_bundled_font(min_size)
+    trimmed = text
+    while len(trimmed) > 3:
+        trimmed = trimmed[:-1]
+        candidate = trimmed + "…"
+        try:
+            bbox = min_f.getbbox(candidate)
+            if bbox[2] - bbox[0] <= max_width:
+                return candidate, min_f
+        except Exception:
+            pass
+
+    return text[:10], min_f
+
+def get_fitted_font(text: str, max_width: int = 90, max_size: int = 14, min_size: int = 8) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Iteratively scales font down until the rendered text fits cleanly within max_width pixels without truncation."""
+    _, font = format_fitted_text(text, max_width=max_width, max_size=max_size, min_size=min_size)
+    return font
 
 class SituationAction(ActionBase):
     def __init__(self, *args, **kwargs):
@@ -143,21 +184,60 @@ class SituationAction(ActionBase):
         font_main = get_bundled_font(13)
         font_sub = get_bundled_font(10)
 
-        if mode == "venue_tv":
-            # Header
+        if mode == "venue":
+            # Dedicated Venue / Stadium Card
+            draw.rectangle([(0, 0), (100, 24)], fill=(32, 45, 62, 255))
+            draw.line([(0, 24), (100, 24)], fill=(60, 80, 110, 255), width=1)
+            draw.text((50, 12), "STADIUM", fill=(190, 215, 245, 255), anchor="mm", font=font_hdr)
+
+            # Venue name with dynamic auto-scaling font & smart fitting
+            v_name = summary.venue_name if summary.venue_name else "Stadium"
+            v_disp, font_v = format_fitted_text(v_name, max_width=92, max_size=13, min_size=8)
+            draw.text((50, 48), v_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_v)
+
+            # Footer: Weather text or League Field
+            draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
+            draw.line([(0, 76), (100, 76)], fill=(45, 50, 60, 255), width=1)
+            footer_str = summary.weather_text if summary.weather_text else f"{state.league_key} Venue"
+            vf_disp, font_vf = format_fitted_text(footer_str, max_width=92, max_size=10, min_size=8)
+            draw.text((50, 88), vf_disp, fill=(160, 210, 255, 255), anchor="mm", font=font_vf)
+
+        elif mode == "broadcast":
+            # Dedicated TV / Network Broadcast Card
+            draw.rectangle([(0, 0), (100, 24)], fill=(22, 48, 78, 255))
+            draw.line([(0, 24), (100, 24)], fill=(45, 95, 150, 255), width=1)
+            draw.text((50, 12), "BROADCAST", fill=(180, 220, 255, 255), anchor="mm", font=font_hdr)
+
+            # TV Network with auto-scaling font
+            tv_str = summary.broadcast_channel if summary.broadcast_channel else (
+                "ESPN" if state.league_key in ("NFL", "NBA", "MLB", "NHL", "MLS") else f"{state.league_key} TV"
+            )
+            tv_disp, font_tv = format_fitted_text(tv_str, max_width=90, max_size=15, min_size=9)
+            draw.text((50, 48), tv_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_tv)
+
+            # Footer
+            draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
+            draw.line([(0, 76), (100, 76)], fill=(45, 50, 60, 255), width=1)
+            tv_sub = "LIVE COVERAGE" if state.status_state == "in" else ("OFFICIAL TV" if summary.broadcast_channel else "BROADCAST")
+            draw.text((50, 88), tv_sub, fill=(130, 200, 255, 255), anchor="mm", font=font_sub)
+
+        elif mode == "venue_tv":
+            # Combined Venue / TV / Weather Card
             draw.rectangle([(0, 0), (100, 24)], fill=(35, 42, 54, 255))
             draw.line([(0, 24), (100, 24)], fill=(50, 60, 80, 255), width=1)
             draw.text((50, 12), "VENUE / TV", fill=(180, 195, 220, 255), anchor="mm", font=font_hdr)
 
-            # Venue name
+            # Venue name with fitted font
             v_name = summary.venue_name if summary.venue_name else "Stadium"
-            draw.text((50, 46), v_name[:14], fill=(255, 255, 255, 255), anchor="mm", font=font_main)
+            v_disp, font_v = format_fitted_text(v_name, max_width=92, max_size=13, min_size=8)
+            draw.text((50, 46), v_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_v)
 
             # Footer: TV & Weather
             draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
             draw.line([(0, 76), (100, 76)], fill=(45, 50, 60, 255), width=1)
-            tv_str = summary.broadcast_channel if summary.broadcast_channel else (summary.weather_text[:14] if summary.weather_text else state.league_key)
-            draw.text((50, 88), tv_str[:14], fill=(160, 210, 255, 255), anchor="mm", font=font_sub)
+            tv_str = summary.broadcast_channel if summary.broadcast_channel else (summary.weather_text if summary.weather_text else state.league_key)
+            tv_disp, font_tv_sub = format_fitted_text(tv_str, max_width=92, max_size=10, min_size=8)
+            draw.text((50, 88), tv_disp, fill=(160, 210, 255, 255), anchor="mm", font=font_tv_sub)
 
         elif mode == "ball_spot":
             # Header
@@ -165,9 +245,10 @@ class SituationAction(ActionBase):
             draw.line([(0, 24), (100, 24)], fill=(255, 255, 255, 40), width=1)
             draw.text((50, 12), "BALL ON / BASES", fill=(255, 255, 255, 255), anchor="mm", font=font_hdr)
 
-            # Main
+            # Main with fitted font
             spot_text = state.down_distance if state.down_distance else ("Inning Radar" if state.league_key == "MLB" else "Midfield")
-            draw.text((50, 48), spot_text[:12], fill=(255, 255, 255, 255), anchor="mm", font=font_main)
+            spot_disp, font_spot = format_fitted_text(spot_text, max_width=92, max_size=13, min_size=9)
+            draw.text((50, 48), spot_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_spot)
 
             # Footer
             draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
@@ -186,7 +267,8 @@ class SituationAction(ActionBase):
 
             draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
             draw.line([(0, 76), (100, 76)], fill=(45, 50, 60, 255), width=1)
-            draw.text((50, 88), state.status_detail[:14], fill=(160, 170, 190, 255), anchor="mm", font=font_sub)
+            det_disp, font_det = format_fitted_text(state.status_detail, max_width=92, max_size=10, min_size=8)
+            draw.text((50, 88), det_disp, fill=(160, 170, 190, 255), anchor="mm", font=font_det)
 
         else:
             # Default / Down & Distance
@@ -195,11 +277,14 @@ class SituationAction(ActionBase):
             draw.text((50, 12), "SITUATION", fill=(180, 195, 220, 255), anchor="mm", font=font_hdr)
 
             sit_str = state.down_distance if state.down_distance else (state.clock if state.clock else state.status_detail)
-            draw.text((50, 48), sit_str[:12], fill=(255, 255, 255, 255), anchor="mm", font=font_main)
+            sit_disp, font_sit = format_fitted_text(sit_str, max_width=92, max_size=13, min_size=8)
+            draw.text((50, 48), sit_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_sit)
 
             draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
             draw.line([(0, 76), (100, 76)], fill=(45, 50, 60, 255), width=1)
-            draw.text((50, 88), state.period_text[:14] if state.period_text else "Active", fill=(160, 170, 190, 255), anchor="mm", font=font_sub)
+            p_text = state.period_text if state.period_text else "Active"
+            p_disp, font_p = format_fitted_text(p_text, max_width=92, max_size=10, min_size=8)
+            draw.text((50, 88), p_disp, fill=(160, 170, 190, 255), anchor="mm", font=font_p)
 
         draw.rectangle([(0, 0), (99, 99)], outline=(50, 55, 68, 255), width=1)
         self.set_media(image=img)

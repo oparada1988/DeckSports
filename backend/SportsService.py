@@ -87,6 +87,25 @@ class GameSummary:
     last_updated: float = 0.0
 
 
+def parse_clock_seconds(clock_str: str) -> int:
+    """Converts a clock string (e.g. '14:52', '0:45', '24.0') into total seconds remaining."""
+    if not clock_str:
+        return 0
+    try:
+        clean = clock_str.strip()
+        if ":" in clean:
+            parts = clean.split(":")
+            if len(parts) == 2:
+                mins = int(float(parts[0]))
+                secs = int(float(parts[1]))
+                return max(0, mins * 60 + secs)
+        else:
+            return max(0, int(float(clean)))
+    except Exception:
+        pass
+    return 0
+
+
 @dataclass
 class GameState:
     league_key: str = "NFL"
@@ -95,6 +114,9 @@ class GameState:
     status_state: str = "off"   # "pre", "in", "post", "off"
     status_detail: str = "No Game Scheduled"
     clock: str = ""
+    clock_seconds: int = 0
+    clock_synced_at: float = 0.0
+    clock_is_running: bool = False
     period: int = 0
     period_text: str = ""
     down_distance: str = ""
@@ -295,6 +317,22 @@ class SportsService:
             self.game_states[key] = new_st
             return new_st
 
+    def get_interpolated_clock(self, state: GameState) -> str:
+        """Returns smooth 1-second interpolated clock string for live in-game match states."""
+        if state.status_state != "in" or not state.clock or not state.clock_is_running or state.clock_seconds <= 0:
+            return state.clock if state.clock else state.period_text
+
+        # Compute elapsed monotonic seconds since last API snapshot
+        elapsed = int(time.monotonic() - state.clock_synced_at)
+        remaining = max(0, state.clock_seconds - elapsed)
+
+        mins = remaining // 60
+        secs = remaining % 60
+        if mins > 0:
+            return f"{mins}:{secs:02d}"
+        else:
+            return f"0:{secs:02d}"
+
     # --- Non-Blocking Image & Logo Caching ---
     def get_image(self, url: str | None, max_size: tuple[int, int] = (80, 80)) -> Image.Image | None:
         if not url:
@@ -433,22 +471,30 @@ class SportsService:
             self.game_summaries[key] = new_summ
             return new_summ
 
-    def fetch_game_summary(self, league_key: str, team_id: str, force: bool = False):
+    def fetch_game_summary(self, league_key: str, team_id: str, force: bool = False, refresh_seconds: int = 15):
         if not league_key or not team_id:
             return
+
+        state = self.get_game_state(league_key, team_id)
+        event_id = state.event_id
+        if not event_id:
+            return
+
+        # Targeted 5s summary refresh for live games, 60s for completed
+        if state.status_state == "in":
+            refresh_seconds = min(refresh_seconds, 5)
+        elif state.status_state == "post":
+            refresh_seconds = max(refresh_seconds, 60)
 
         key = (league_key, str(team_id))
         now = time.time()
         with self._lock:
             cached_sum = self.game_summaries.get(key)
-            if not force and cached_sum and (now - cached_sum.last_updated < 20):
+            if not force and cached_sum and (now - cached_sum.last_updated < refresh_seconds):
                 return
             if self._summary_fetch_locks.get(key, False):
                 return
             self._summary_fetch_locks[key] = True
-
-        state = self.get_game_state(league_key, team_id)
-        event_id = state.event_id
 
         threading.Thread(target=self._fetch_summary_worker, args=(league_key, team_id, event_id), daemon=True).start()
 
@@ -669,6 +715,14 @@ class SportsService:
         if not league_key or not team_id:
             return
 
+        state = self.game_states.get((league_key, str(team_id)))
+        if state and state.status_state == "in":
+            # Active in-game targeted 5-second polling
+            refresh_seconds = min(refresh_seconds, 5)
+        elif state and state.status_state == "post":
+            # Completed game polling relaxes to 60s
+            refresh_seconds = max(refresh_seconds, 60)
+
         now = time.time()
         cached = self.league_scoreboard_cache.get(league_key)
 
@@ -795,7 +849,30 @@ class SportsService:
                         team_abbrev=team.abbreviation or "TEAM",
                         primary_color=team.color or (0, 53, 148, 255),
                         alt_color=team.alternate_color or (200, 205, 215, 255),
-                        score_delta=score_delta
+                        score_delta=score_delta,
+                        event_detail=new_state.status_detail or ""
+                    )
+            except Exception:
+                pass
+
+        # Auto-trigger victory celebration when followed team wins at end of game ('in' -> 'post')
+        if old_state and old_state.status_state == "in" and new_state.status_state == "post" and hasattr(self, "celebration_manager"):
+            try:
+                is_away = str(new_state.away_team.id) == str(team_id)
+                my_team = new_state.away_team if is_away else new_state.home_team
+                opp_team = new_state.home_team if is_away else new_state.away_team
+                my_sc = int(my_team.score or 0)
+                opp_sc = int(opp_team.score or 0)
+                if my_sc > opp_sc:
+                    self.celebration_manager.trigger_victory(
+                        league_key=league_key,
+                        team_name=my_team.name or "Followed Team",
+                        team_abbrev=my_team.abbreviation or "TEAM",
+                        primary_color=my_team.color or (0, 53, 148, 255),
+                        alt_color=my_team.alternate_color or (200, 205, 215, 255),
+                        my_score=str(my_sc),
+                        opp_abbrev=opp_team.abbreviation or "OPP",
+                        opp_score=str(opp_sc)
                     )
             except Exception:
                 pass
@@ -818,6 +895,13 @@ class SportsService:
         state.status_state = raw_state
         state.status_detail = status_type.get("shortDetail") or status_type.get("detail", "")
         state.clock = status_info.get("displayClock", "")
+        state.clock_seconds = parse_clock_seconds(state.clock)
+        state.clock_synced_at = time.monotonic()
+        
+        detail_lower = state.status_detail.lower()
+        is_break = any(b in detail_lower for b in ("half", "end of", "ot", "delay", "intermission", "final"))
+        state.clock_is_running = (raw_state == "in" and state.clock_seconds > 0 and not is_break)
+
         state.period = status_info.get("period", 0)
         state.period_text = status_type.get("shortDetail", "")
 

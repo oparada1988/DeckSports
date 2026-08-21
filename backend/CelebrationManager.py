@@ -29,8 +29,8 @@ def get_cached_font(size: int = 24) -> ImageFont.FreeTypeFont | ImageFont.ImageF
     return ImageFont.load_default()
 
 
-def get_celebration_text(league_key: str, sport_slug: str, score_delta: int = 0) -> str:
-    """Determine dynamic celebration text based on sport and scoring magnitude."""
+def get_celebration_text(league_key: str, sport_slug: str, score_delta: int = 0, event_detail: str = "") -> str:
+    """Determine dynamic celebration text based on sport, league rules, and scoring magnitude."""
     sport = sport_slug.lower() if sport_slug else ""
     if not sport:
         if league_key in ("NFL", "UFL", "NCAA_FB"):
@@ -44,16 +44,33 @@ def get_celebration_text(league_key: str, sport_slug: str, score_delta: int = 0)
         elif league_key in ("MLS",):
             sport = "soccer"
 
+    detail_lower = event_detail.lower()
+
     if sport == "football":
-        if score_delta >= 6:
+        if league_key == "UFL":
+            # UFL Specific Scoring Rules
+            if score_delta == 4 or "4-pt" in detail_lower or "60" in detail_lower or "super kick" in detail_lower:
+                return "4-PT SUPER KICK!"
+            elif score_delta == 3:
+                return "3-PT CONVERSION!" if ("conversion" in detail_lower or "conv" in detail_lower) else "FIELD GOAL!"
+            elif score_delta == 2:
+                return "2-PT CONVERSION!"
+            elif score_delta == 1:
+                return "1-PT CONVERSION!"
+            elif score_delta >= 6:
+                return "TOUCHDOWN!"
             return "TOUCHDOWN!"
-        elif score_delta == 3:
-            return "FIELD GOAL!"
-        elif score_delta == 2:
-            return "SAFETY!"
-        elif score_delta == 1:
-            return "EXTRA POINT!"
-        return "TOUCHDOWN!"
+        else:
+            # NFL & College Football
+            if score_delta >= 6:
+                return "TOUCHDOWN!"
+            elif score_delta == 3:
+                return "FIELD GOAL!"
+            elif score_delta == 2:
+                return "2-PT CONVERSION!" if ("conversion" in detail_lower or "conv" in detail_lower) else "SAFETY!"
+            elif score_delta == 1:
+                return "EXTRA POINT GOOD!"
+            return "TOUCHDOWN!"
 
     elif sport == "basketball":
         if score_delta >= 3:
@@ -61,22 +78,28 @@ def get_celebration_text(league_key: str, sport_slug: str, score_delta: int = 0)
         elif score_delta == 1:
             return "FREE THROW!"
         elif score_delta == 2:
-            return "SLAM DUNK!"
+            return "SLAM DUNK!" if ("dunk" in detail_lower or "alley" in detail_lower) else "BASKET!"
         return "SLAM DUNK!"
 
     elif sport == "baseball":
-        if score_delta >= 4:
+        if score_delta >= 4 or "grand slam" in detail_lower:
             return "GRAND SLAM!"
-        elif score_delta in (2, 3):
+        elif score_delta in (2, 3) or "home run" in detail_lower:
             return "HOME RUN!"
         elif score_delta == 1:
             return "RUN SCORED!"
         return "HOME RUN!"
 
     elif sport == "hockey":
+        if "ppg" in detail_lower or "power play" in detail_lower or "5-on-4" in detail_lower:
+            return "POWER PLAY GOAL!"
+        elif "shg" in detail_lower or "shorthanded" in detail_lower:
+            return "SHORTHANDED GOAL!"
         return "GOAL!"
 
     elif sport == "soccer":
+        if "penalty" in detail_lower or "pk" in detail_lower or "shootout" in detail_lower:
+            return "PENALTY GOAL!"
         return "GOAL!"
 
     return "SCORE!"
@@ -101,7 +124,8 @@ class CelebrationManager:
         primary_color: tuple,
         alt_color: tuple,
         celebration_text: str = "",
-        score_delta: int = 0
+        score_delta: int = 0,
+        event_detail: str = ""
     ):
         with self._lock:
             if self.is_animating:
@@ -111,7 +135,32 @@ class CelebrationManager:
 
         threading.Thread(
             target=self._run_celebration_worker,
-            args=(league_key, team_name, team_abbrev, primary_color, alt_color, celebration_text, score_delta),
+            args=(league_key, team_name, team_abbrev, primary_color, alt_color, celebration_text, score_delta, event_detail, False, ""),
+            daemon=True
+        ).start()
+
+    def trigger_victory(
+        self,
+        league_key: str,
+        team_name: str,
+        team_abbrev: str,
+        primary_color: tuple,
+        alt_color: tuple,
+        my_score: str = "",
+        opp_abbrev: str = "",
+        opp_score: str = ""
+    ):
+        """Triggers a 4.0-second full-deck celebratory victory animation with confetti rain and fireworks."""
+        with self._lock:
+            if self.is_animating:
+                return
+            self.is_animating = True
+            self._cancel_requested = False
+
+        subtitle = f"FINAL: {team_abbrev} {my_score} - {opp_abbrev} {opp_score}" if (my_score and opp_score) else f"{team_name.upper()} WINS!"
+        threading.Thread(
+            target=self._run_celebration_worker,
+            args=(league_key, team_name, team_abbrev, primary_color, alt_color, "VICTORY!", 0, "", True, subtitle),
             daemon=True
         ).start()
 
@@ -123,7 +172,10 @@ class CelebrationManager:
         primary_color: tuple,
         alt_color: tuple,
         celebration_text: str,
-        score_delta: int
+        score_delta: int,
+        event_detail: str = "",
+        is_victory: bool = False,
+        custom_subtitle: str = ""
     ):
         try:
             sport_slug = ""
@@ -131,7 +183,7 @@ class CelebrationManager:
                 sport_slug = LEAGUES[league_key].sport_slug
 
             if not celebration_text:
-                celebration_text = get_celebration_text(league_key, sport_slug, score_delta)
+                celebration_text = get_celebration_text(league_key, sport_slug, score_delta, event_detail)
 
             controller = None
             if hasattr(gl, "deck_manager") and getattr(gl.deck_manager, "deck_controller", None):
@@ -193,7 +245,7 @@ class CelebrationManager:
             canvas_w = cols * 100
             canvas_h = rows * 100
 
-            total_frames = 45
+            total_frames = 60 if is_victory else 45
             fps = 15
             frame_duration = 1.0 / fps
 
@@ -206,9 +258,18 @@ class CelebrationManager:
             p_rgb = primary_color[:3] if len(primary_color) >= 3 else (0, 53, 148)
             s_rgb = alt_color[:3] if len(alt_color) >= 3 else (200, 205, 215)
 
-            # Select background renderer based on sport
+            # Select background renderer based on sport and scoring event
+            is_fg = (not is_victory and sport_slug == "football" and ("FIELD GOAL" in celebration_text or "SUPER KICK" in celebration_text or score_delta in (3, 4)))
+            is_ufl_mega = (not is_victory and league_key == "UFL" and ("SUPER KICK" in celebration_text or score_delta == 4))
+
             sport_renderer = self._draw_default_background
-            if sport_slug == "football":
+            if is_victory:
+                sport_renderer = self._draw_victory_background
+            elif is_fg:
+                sport_renderer = lambda d, cw, ch, pr, sr, fi, prg, c, r: self._draw_field_goal_background(
+                    d, cw, ch, pr, sr, fi, prg, c, r, logo_img=logo_img, is_ufl_mega=is_ufl_mega, frame_canvas=frame_canvas
+                )
+            elif sport_slug == "football":
                 sport_renderer = self._draw_football_background
             elif sport_slug == "basketball":
                 sport_renderer = self._draw_basketball_background
@@ -249,8 +310,8 @@ class CelebrationManager:
                 # Draw sport-specific background
                 sport_renderer(draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows)
 
-                # Center pulsing logo
-                if logo_img:
+                # Center pulsing logo (suppressed during Field Goal so uprights remain clear)
+                if logo_img and not is_fg:
                     scale_factor = 1.0 + 0.15 * math.sin(progress * math.pi * 4)
                     scaled_w = int(logo_img.width * scale_factor)
                     scaled_h = int(logo_img.height * scale_factor)
@@ -265,6 +326,17 @@ class CelebrationManager:
                 draw.rectangle([(0, banner_y1), (canvas_w, banner_y2)], fill=(12, 14, 18, 230))
                 draw.line([(0, banner_y1), (canvas_w, banner_y1)], fill=(255, 215, 0, 255), width=3)
                 draw.line([(0, banner_y2), (canvas_w, banner_y2)], fill=(255, 215, 0, 255), width=3)
+
+                # Dual endcap team logos on banner for Field Goals
+                if is_fg and logo_img:
+                    badge_size = min(42, banner_y2 - banner_y1 - 10)
+                    if badge_size > 10:
+                        b_logo = logo_img.resize((badge_size, badge_size), Image.Resampling.BILINEAR)
+                        left_badge_x = int(canvas_w * 0.08)
+                        right_badge_x = canvas_w - int(canvas_w * 0.08) - badge_size
+                        badge_y = (banner_y1 + banner_y2 - badge_size) // 2
+                        frame_canvas.alpha_composite(b_logo, (left_badge_x, badge_y))
+                        frame_canvas.alpha_composite(b_logo, (right_badge_x, badge_y))
 
                 font_title = get_cached_font(52 if cols >= 8 else 36)
                 font_sub = get_cached_font(26 if cols >= 8 else 18)
@@ -286,10 +358,11 @@ class CelebrationManager:
                     font=font_title
                 )
 
-                # Subtitle (Team Name)
+                # Subtitle (Team Name or Victory Scoreline)
+                sub_label = custom_subtitle if custom_subtitle else f"{team_name.upper()}"
                 draw.text(
                     (canvas_w // 2, banner_y2 - 22),
-                    f"{team_name.upper()}",
+                    sub_label,
                     fill=(200, 225, 255, 255),
                     anchor="mm",
                     font=font_sub
@@ -437,6 +510,155 @@ class CelebrationManager:
     # -------------------------------------------------------------------------
     # Sport-Specific Background Renderers
     # -------------------------------------------------------------------------
+
+    def _draw_victory_background(self, draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows):
+        """Victory: Golden stadium atmosphere, animated multi-colored confetti shower, and starburst fireworks."""
+        # 1. Team-tinted victory backdrop
+        bg_r = min(255, max(0, int(p_rgb[0] * 0.25 + 15)))
+        bg_g = min(255, max(0, int(p_rgb[1] * 0.25 + 15)))
+        bg_b = min(255, max(0, int(p_rgb[2] * 0.25 + 25)))
+        draw.rectangle([(0, 0), (canvas_w, canvas_h)], fill=(bg_r, bg_g, bg_b, 255))
+
+        # 2. Golden Stadium Spotlight Beams
+        for bx in (int(canvas_w * 0.15), int(canvas_w * 0.5), int(canvas_w * 0.85)):
+            beam_tilt = int(math.sin(progress * math.pi * 4 + bx) * 40)
+            draw.polygon([(bx - 30, 0), (bx + 30, 0), (bx + beam_tilt + 90, canvas_h), (bx + beam_tilt - 90, canvas_h)], fill=(255, 225, 120, 25))
+
+        # 3. Multi-Color Confetti Rain (drifting downwards across full matrix)
+        confetti_colors = [
+            (p_rgb[0], p_rgb[1], p_rgb[2], 240),
+            (s_rgb[0], s_rgb[1], s_rgb[2], 240),
+            (255, 215, 0, 240),   # Gold
+            (255, 255, 255, 240),  # White
+            (255, 60, 60, 240)    # Bright Red
+        ]
+        confetti_count = 36
+        for ci in range(confetti_count):
+            seed_x = (ci * 37) % canvas_w
+            speed = 1.2 + (ci % 5) * 0.3
+            cx = (seed_x + int(math.sin(progress * math.pi * 6 + ci) * 20)) % canvas_w
+            cy = int((frame_idx * 7 * speed + ci * 25)) % canvas_h
+            cw = 6 + (ci % 4) * 2
+            ch = 4 + (ci % 3) * 2
+            c_color = confetti_colors[ci % len(confetti_colors)]
+            draw.rectangle([(cx - cw // 2, cy - ch // 2), (cx + cw // 2, cy + ch // 2)], fill=c_color)
+
+        # 4. Starburst Fireworks Bursts
+        bursts = [
+            (int(canvas_w * 0.22), int(canvas_h * 0.30), 0.0),
+            (int(canvas_w * 0.78), int(canvas_h * 0.28), 0.3),
+            (int(canvas_w * 0.50), int(canvas_h * 0.22), 0.6),
+        ]
+        for bx, by, delay in bursts:
+            b_prog = (progress + delay) % 1.0
+            if b_prog < 0.6:
+                r_dist = int(b_prog * 120)
+                num_sparks = 10
+                for si in range(num_sparks):
+                    ang = (si / num_sparks) * 2 * math.pi
+                    sx = bx + int(math.cos(ang) * r_dist)
+                    sy = by + int(math.sin(ang) * r_dist * 0.7)
+                    if 0 <= sx < canvas_w and 0 <= sy < canvas_h:
+                        spark_alpha = max(0, int(255 * (1.0 - b_prog / 0.6)))
+                        draw.ellipse([(sx - 3, sy - 3), (sx + 3, sy + 3)], fill=(255, 220, 50, spark_alpha))
+
+    def _draw_field_goal_background(self, draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows, logo_img=None, is_ufl_mega=False, frame_canvas=None):
+        """Field Goal: 3D perspective uprights with team logo padded post, flying football trajectory, and tip flashes."""
+        # 1. Stadium night sky
+        sky_r = min(255, max(0, int(p_rgb[0] * 0.12 + 10)))
+        sky_g = min(255, max(0, int(p_rgb[1] * 0.12 + 15)))
+        sky_b = min(255, max(0, int(p_rgb[2] * 0.12 + 35)))
+        draw.rectangle([(0, 0), (canvas_w, canvas_h)], fill=(sky_r, sky_g, sky_b, 255))
+
+        # Stadium lights
+        for lx in (int(canvas_w * 0.12), int(canvas_w * 0.88)):
+            draw.ellipse([(lx - 50, -20), (lx + 50, 60)], fill=(255, 255, 220, 50))
+
+        # Turf grass at bottom
+        turf_y = int(canvas_h * 0.72)
+        draw.rectangle([(0, turf_y), (canvas_w, canvas_h)], fill=(20, 65, 30, 255))
+        for gy in range(turf_y, canvas_h, 15):
+            draw.rectangle([(0, gy), (canvas_w, min(canvas_h, gy + 7))], fill=(25, 78, 36, 255))
+        draw.line([(0, turf_y), (canvas_w, turf_y)], fill=(240, 245, 255, 180), width=3)
+
+        # 2. Upright Dimensions
+        cx = canvas_w // 2
+        post_bottom = canvas_h - 10
+        crossbar_y = int(canvas_h * 0.44)
+        upright_top = int(canvas_h * 0.08)
+        post_width = 8 if cols >= 8 else 6
+        goal_w = int(canvas_w * 0.38) if cols >= 8 else int(canvas_w * 0.46)
+        left_x = cx - goal_w // 2
+        right_x = cx + goal_w // 2
+
+        goal_color = (255, 215, 0, 255)  # Gold
+
+        # 3. Base Post with Team Padded Protector
+        draw.rectangle([(cx - post_width // 2, crossbar_y), (cx + post_width // 2, post_bottom)], fill=goal_color)
+
+        # Team protective pad on lower portion of post
+        pad_top = int(canvas_h * 0.60)
+        pad_w = post_width + 24
+        pad_left = cx - pad_w // 2
+        pad_right = cx + pad_w // 2
+        draw.rectangle([(pad_left, pad_top), (pad_right, post_bottom)], fill=p_rgb)
+        draw.rectangle([(pad_left, pad_top), (pad_right, post_bottom)], outline=s_rgb, width=2)
+
+        # Mini team logo on pad
+        if logo_img and frame_canvas:
+            pad_h = post_bottom - pad_top
+            max_pad_logo = min(pad_w - 4, pad_h - 6)
+            if max_pad_logo >= 12:
+                try:
+                    mini_logo = logo_img.resize((max_pad_logo, max_pad_logo), Image.Resampling.BILINEAR)
+                    ml_x = cx - max_pad_logo // 2
+                    ml_y = pad_top + (pad_h - max_pad_logo) // 2
+                    frame_canvas.alpha_composite(mini_logo, (ml_x, ml_y))
+                except Exception:
+                    pass
+
+        # 4. Crossbar & Uprights
+        draw.rectangle([(left_x, crossbar_y - post_width // 2), (right_x, crossbar_y + post_width // 2)], fill=goal_color)
+        draw.rectangle([(left_x - post_width // 2, upright_top), (left_x + post_width // 2, crossbar_y)], fill=goal_color)
+        draw.rectangle([(right_x - post_width // 2, upright_top), (right_x + post_width // 2, crossbar_y)], fill=goal_color)
+
+        # 5. UFL Lightning Bolt Effects (Electric Blue & Gold Sparks)
+        if is_ufl_mega:
+            lightning_color = (120, 210, 255, 255) if (frame_idx % 2 == 0) else (255, 220, 50, 255)
+            for bolt_x in (left_x, right_x):
+                for by in range(upright_top, crossbar_y, 25):
+                    offset_x = 10 if (by // 25 + frame_idx) % 2 == 0 else -10
+                    draw.line([(bolt_x, by), (bolt_x + offset_x, by + 12), (bolt_x, by + 25)], fill=lightning_color, width=3)
+
+        # 6. Animated Football Trajectory (Perspective Arc)
+        kick_progress = min(1.0, progress * 1.5)
+        ball_y = int(canvas_h + 20 - kick_progress * (canvas_h * 0.70))
+        drift = int(math.sin(kick_progress * math.pi) * 12)
+        ball_x = cx + drift
+        ball_size = max(8, int(26 * (1.0 - kick_progress * 0.55)))
+
+        # Comet tail behind ball if UFL Super Kick
+        if is_ufl_mega and kick_progress > 0.1:
+            for t_i in range(5):
+                tail_progress = max(0, kick_progress - t_i * 0.05)
+                ty = int(canvas_h + 20 - tail_progress * (canvas_h * 0.70))
+                tx = cx + int(math.sin(tail_progress * math.pi) * 12)
+                tw = max(4, int(ball_size * 0.8 - t_i * 2))
+                t_color = (255, 140, 20, max(0, 200 - t_i * 40)) if (t_i % 2 == 0) else (100, 200, 255, max(0, 200 - t_i * 40))
+                draw.ellipse([(tx - tw, ty - tw), (tx + tw, ty + tw)], fill=t_color)
+
+        # Draw the Football (Leather brown oval with white laces)
+        draw.ellipse([(ball_x - ball_size, ball_y - ball_size // 2), (ball_x + ball_size, ball_y + ball_size // 2)], fill=(150, 70, 25, 255), outline=(90, 40, 15, 255))
+        draw.line([(ball_x - ball_size // 2, ball_y), (ball_x + ball_size // 2, ball_y)], fill=(255, 255, 255, 255), width=2)
+        draw.line([(ball_x, ball_y - 3), (ball_x, ball_y + 3)], fill=(255, 255, 255, 255), width=1)
+
+        # 7. Tip Strobe Flashes ("IT'S GOOD!") when ball crosses
+        if kick_progress > 0.55:
+            flash_on = ((frame_idx // 2) % 2 == 0)
+            f_color = (255, 255, 255, 255) if flash_on else (255, 220, 50, 255)
+            f_r = 14 if flash_on else 8
+            for tip_x in (left_x, right_x):
+                draw.ellipse([(tip_x - f_r, upright_top - f_r), (tip_x + f_r, upright_top + f_r)], fill=f_color)
 
     def _draw_football_background(self, draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows):
         """Football: Gridiron turf mower bands, yard chalk lines, hash marks, yard numbers, and endzone slashes."""
