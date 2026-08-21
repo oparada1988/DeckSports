@@ -407,30 +407,55 @@ class CelebrationManager:
                     ly = (canvas_h - scaled_h) // 2 - 20
                     frame_canvas.alpha_composite(scaled_logo, (lx, ly))
 
-                # Celebration banner
+                # Celebration banner (Cleanly framed across Row 2 keys)
                 banner_y1 = int(canvas_h * 0.48)
-                banner_y2 = int(canvas_h * 0.82)
-                draw.rectangle([(0, banner_y1), (canvas_w, banner_y2)], fill=(12, 14, 18, 230))
+                banner_y2 = int(canvas_h * 0.76)
+                draw.rectangle([(0, banner_y1), (canvas_w, banner_y2)], fill=(12, 14, 18, 235))
                 draw.line([(0, banner_y1), (canvas_w, banner_y1)], fill=(255, 215, 0, 255), width=3)
                 draw.line([(0, banner_y2), (canvas_w, banner_y2)], fill=(255, 215, 0, 255), width=3)
 
-                # Dual endcap team logos on banner for Field Goals
-                if is_fg and logo_img:
-                    badge_size = min(42, banner_y2 - banner_y1 - 10)
-                    if badge_size > 10:
-                        b_logo = logo_img.resize((badge_size, badge_size), Image.Resampling.BILINEAR)
-                        left_badge_x = int(canvas_w * 0.08)
-                        right_badge_x = canvas_w - int(canvas_w * 0.08) - badge_size
-                        badge_y = (banner_y1 + banner_y2 - badge_size) // 2
-                        frame_canvas.alpha_composite(b_logo, (left_badge_x, badge_y))
-                        frame_canvas.alpha_composite(b_logo, (right_badge_x, badge_y))
+                # Dual endcap team logos on banner for Field Goals (Unobstructed & clearly framed)
+                left_badge_x = 24 if cols >= 8 else 14
+                badge_size = min(54, banner_y2 - banner_y1 - 16) if cols >= 8 else min(38, banner_y2 - banner_y1 - 12)
+                right_badge_x = canvas_w - left_badge_x - badge_size
+                if is_fg and logo_img and badge_size > 10:
+                    b_logo = logo_img.resize((badge_size, badge_size), Image.Resampling.BILINEAR)
+                    badge_y = (banner_y1 + banner_y2 - badge_size) // 2
+                    frame_canvas.alpha_composite(b_logo, (left_badge_x, badge_y))
+                    frame_canvas.alpha_composite(b_logo, (right_badge_x, badge_y))
 
-                font_title = get_cached_font(52 if cols >= 8 else 36)
-                font_sub = get_cached_font(26 if cols >= 8 else 18)
+                # Subtitle (Team Name or Victory Scoreline)
+                sub_label = custom_subtitle if custom_subtitle else f"{team_name.upper()}"
+
+                # Calculate maximum available text width so text NEVER overlaps the logos
+                max_title_w = right_badge_x - (left_badge_x + badge_size) - 28 if (is_fg and logo_img) else int(canvas_w * 0.88)
+
+                # Dynamic auto-fitting font size for title
+                font_title_size = 42 if cols >= 8 else 28
+                while font_title_size > 16:
+                    test_font = get_cached_font(font_title_size)
+                    bbox = draw.textbbox((0, 0), celebration_text, font=test_font)
+                    if (bbox[2] - bbox[0]) <= max_title_w:
+                        break
+                    font_title_size -= 2
+                font_title = get_cached_font(font_title_size)
+
+                # Dynamic auto-fitting font size for subtitle
+                font_sub_size = 22 if cols >= 8 else 16
+                while font_sub_size > 12:
+                    test_sub_font = get_cached_font(font_sub_size)
+                    bbox = draw.textbbox((0, 0), sub_label, font=test_sub_font)
+                    if (bbox[2] - bbox[0]) <= max_title_w:
+                        break
+                    font_sub_size -= 2
+                font_sub = get_cached_font(font_sub_size)
+
+                title_y = banner_y1 + int((banner_y2 - banner_y1) * 0.35)
+                sub_y = banner_y1 + int((banner_y2 - banner_y1) * 0.74)
 
                 # Title text with drop shadow and alternating bright strobe
                 draw.text(
-                    (canvas_w // 2 + 3, (banner_y1 + banner_y2) // 2 - 12 + 3),
+                    (canvas_w // 2 + 2, title_y + 2),
                     celebration_text,
                     fill=(0, 0, 0, 255),
                     anchor="mm",
@@ -438,17 +463,16 @@ class CelebrationManager:
                 )
                 text_color = (255, 255, 255, 255) if (frame_idx % 2 == 0) else (255, 225, 50, 255)
                 draw.text(
-                    (canvas_w // 2, (banner_y1 + banner_y2) // 2 - 12),
+                    (canvas_w // 2, title_y),
                     celebration_text,
                     fill=text_color,
                     anchor="mm",
                     font=font_title
                 )
 
-                # Subtitle (Team Name or Victory Scoreline)
-                sub_label = custom_subtitle if custom_subtitle else f"{team_name.upper()}"
+                # Subtitle text
                 draw.text(
-                    (canvas_w // 2, banner_y2 - 22),
+                    (canvas_w // 2, sub_y),
                     sub_label,
                     fill=(200, 225, 255, 255),
                     anchor="mm",
