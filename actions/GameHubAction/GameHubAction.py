@@ -19,11 +19,12 @@ except (ImportError, ValueError):
     from backend.SportsService import GameState
 
 REFRESH_OPTIONS = [
-    ("Adaptive (15s live / 10m off)", 15),
+    ("Adaptive (5s Live / 60s Final)", 5),
+    ("5 Seconds (Ultra-Fast Live)", 5),
     ("10 Seconds (Fast)", 10),
     ("15 Seconds (Standard)", 15),
-    ("30 Seconds", 30),
-    ("60 Seconds", 60),
+    ("30 Seconds (Eco)", 30),
+    ("60 Seconds (Passive)", 60),
 ]
 
 DISPLAY_MODES = [
@@ -481,7 +482,8 @@ class GameHubAction(ActionBase):
                 team_name=team_name,
                 team_abbrev=team_abbrev,
                 primary_color=p_color,
-                alt_color=alt_color
+                alt_color=alt_color,
+                force_preview=True
             )
 
     def _on_test_victory_clicked(self, _btn):
@@ -512,7 +514,8 @@ class GameHubAction(ActionBase):
                 alt_color=alt_color,
                 my_score=my_sc,
                 opp_abbrev=opp_abbrev,
-                opp_score=opp_sc
+                opp_score=opp_sc,
+                force_preview=True
             )
 
     def _on_tap_mode_changed(self, row, _pspec):
@@ -675,35 +678,19 @@ class GameHubAction(ActionBase):
 
         elif state.status_state == "post":
             # FINAL / POST GAME
-            is_followed_winner = False
-            if state.followed_team_id and state.away_team.score and state.home_team.score:
-                try:
-                    is_away = str(state.away_team.id) == str(state.followed_team_id)
-                    my_sc = int(state.away_team.score if is_away else state.home_team.score)
-                    opp_sc = int(state.home_team.score if is_away else state.away_team.score)
-                    if my_sc > opp_sc:
-                        is_followed_winner = True
-                except Exception:
-                    pass
-
             if has_score_keys:
                 # 3-BUTTON SCOREBOARD MODE: Clean bold badge
-                if is_followed_winner:
-                    font_final = get_bundled_font(17)
-                    font_sub = get_bundled_font(10)
-                    draw.text((50, 46), "VICTORY", fill=(255, 220, 50, 255), anchor="mm", font=font_final)
-                    draw.text((50, 68), "FINAL", fill=(170, 210, 255, 255), anchor="mm", font=font_sub)
-                else:
-                    font_final = get_bundled_font(21)
-                    final_text = "FINAL / OT" if ("ot" in state.status_detail.lower() or "overtime" in state.status_detail.lower()) else "FINAL"
-                    draw.text((50, 62), final_text, fill=(255, 65, 65, 255), anchor="mm", font=font_final)
+                font_final = get_bundled_font(21)
+                final_text = "FINAL / OT" if ("ot" in state.status_detail.lower() or "overtime" in state.status_detail.lower()) else "FINAL"
+                draw.text((50, 62), final_text, fill=(255, 65, 65, 255), anchor="mm", font=font_final)
             else:
                 # STANDALONE 1-BUTTON MODE: Show status, scores, and mini logos
                 font_status = get_bundled_font(13)
                 font_score = get_bundled_font(15)
                 font_det = get_bundled_font(11)
 
-                draw.text((50, 41), "VICTORY" if is_followed_winner else "FINAL", fill=(255, 220, 50, 255) if is_followed_winner else (255, 75, 75, 255), anchor="mm", font=font_status)
+                final_text = "FINAL / OT" if ("ot" in state.status_detail.lower() or "overtime" in state.status_detail.lower()) else "FINAL"
+                draw.text((50, 41), final_text, fill=(255, 75, 75, 255), anchor="mm", font=font_status)
 
                 away_logo = self.plugin_base.sports_service.get_image(state.away_team.logo_url, max_size=(18, 18))
                 if away_logo:

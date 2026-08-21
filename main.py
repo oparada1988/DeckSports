@@ -9,7 +9,7 @@ import globals as gl
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk
+from gi.repository import Gtk, Adw
 
 from src.backend.PluginManager.PluginBase import PluginBase
 from src.backend.PluginManager.ActionHolder import ActionHolder
@@ -44,6 +44,9 @@ class DeckSports(PluginBase):
 
         # Shared backend data manager
         self.sports_service = SportsService()
+        self.sports_service.plugin_base = self
+        if hasattr(self.sports_service, "celebration_manager"):
+            self.sports_service.celebration_manager.plugin_base = self
 
         # Auto-provision pre-built Game Hub templates into StreamController pages folder on first launch
         self._auto_provision_pages()
@@ -263,6 +266,70 @@ class DeckSports(PluginBase):
                         pass
         except Exception:
             pass
+
+    def get_settings_area(self) -> Adw.PreferencesGroup:
+        main_group = Adw.PreferencesGroup(
+            title="DeckSports Global Settings & Testing",
+            description="Manage global celebration animation rules and test animations on connected hardware."
+        )
+
+        settings = self.get_settings()
+
+        # 1. Global Celebrations Master Switch
+        celeb_row = Adw.SwitchRow(
+            title="Global Score Celebrations",
+            subtitle="Master toggle for full-deck scoring animations across all Game Hubs"
+        )
+        celeb_row.set_active(settings.get("enable_celebrations", True))
+        def on_celeb_toggled(row, _pspec):
+            st = self.get_settings()
+            st["enable_celebrations"] = row.get_active()
+            self.set_settings(st)
+        celeb_row.connect("notify::active", on_celeb_toggled)
+        main_group.add(celeb_row)
+
+        # 2. Animation Testing Station Combo
+        anim_types = [
+            ("🏈 Football Touchdown (Gridiron & Confetti)", "football_td"),
+            ("🎯 3D Field Goal (\"IT'S GOOD!\")", "field_goal"),
+            ("⚡ UFL 4-Point Mega Kick (Lightning)", "ufl_mega"),
+            ("🏀 Basketball 3-Pointer / Slam Dunk", "basketball"),
+            ("⚾ Baseball Home Run / Grand Slam", "baseball"),
+            ("🏒 Hockey Goal / Red Siren", "hockey"),
+            ("⚽ Soccer Goal / Penalty Kick", "soccer"),
+            ("🏆 Victory Jumbotron (Post-Game Finale)", "victory")
+        ]
+
+        anim_model = Gtk.StringList.new([name for name, _ in anim_types])
+        test_combo_row = Adw.ComboRow(
+            title="Celebration Animation Test Suite",
+            subtitle="Select any sport celebration to preview live on your Stream Deck",
+            model=anim_model
+        )
+        test_combo_row.set_selected(0)
+        main_group.add(test_combo_row)
+
+        # 3. Trigger Preview Button Row
+        test_action_row = Adw.ActionRow(
+            title="Preview Selected Animation",
+            subtitle="Broadcasts the full-deck animation to your deck and UI preview"
+        )
+        play_btn = Gtk.Button(label="Play Live Preview")
+        play_btn.set_valign(Gtk.Align.CENTER)
+        play_btn.add_css_class("suggested-action")
+
+        def on_play_clicked(_btn):
+            selected_idx = test_combo_row.get_selected()
+            if 0 <= selected_idx < len(anim_types):
+                _, anim_key = anim_types[selected_idx]
+                if hasattr(self.sports_service, "celebration_manager"):
+                    self.sports_service.celebration_manager.trigger_test_preview(anim_key)
+
+        play_btn.connect("clicked", on_play_clicked)
+        test_action_row.add_suffix(play_btn)
+        main_group.add(test_action_row)
+
+        return main_group
 
     def on_uninstall(self) -> None:
         """

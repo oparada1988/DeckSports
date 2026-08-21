@@ -125,7 +125,8 @@ class CelebrationManager:
         alt_color: tuple,
         celebration_text: str = "",
         score_delta: int = 0,
-        event_detail: str = ""
+        event_detail: str = "",
+        force_preview: bool = False
     ):
         with self._lock:
             if self.is_animating:
@@ -135,7 +136,7 @@ class CelebrationManager:
 
         threading.Thread(
             target=self._run_celebration_worker,
-            args=(league_key, team_name, team_abbrev, primary_color, alt_color, celebration_text, score_delta, event_detail, False, ""),
+            args=(league_key, team_name, team_abbrev, primary_color, alt_color, celebration_text, score_delta, event_detail, False, "", force_preview),
             daemon=True
         ).start()
 
@@ -148,7 +149,8 @@ class CelebrationManager:
         alt_color: tuple,
         my_score: str = "",
         opp_abbrev: str = "",
-        opp_score: str = ""
+        opp_score: str = "",
+        force_preview: bool = False
     ):
         """Triggers a 4.0-second full-deck celebratory victory animation with confetti rain and fireworks."""
         with self._lock:
@@ -160,7 +162,32 @@ class CelebrationManager:
         subtitle = f"FINAL: {team_abbrev} {my_score} - {opp_abbrev} {opp_score}" if (my_score and opp_score) else f"{team_name.upper()} WINS!"
         threading.Thread(
             target=self._run_celebration_worker,
-            args=(league_key, team_name, team_abbrev, primary_color, alt_color, "VICTORY!", 0, "", True, subtitle),
+            args=(league_key, team_name, team_abbrev, primary_color, alt_color, "VICTORY!", 0, "", True, subtitle, force_preview),
+            daemon=True
+        ).start()
+
+    def trigger_test_preview(self, anim_type: str):
+        """Plays any of the 8 celebration animations as a forced live preview across connected hardware."""
+        samples = {
+            "football_td": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "TOUCHDOWN!", 6, "touchdown", False, ""),
+            "field_goal": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "FIELD GOAL!", 3, "field goal", False, ""),
+            "ufl_mega": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "4-PT FIELD GOAL!", 4, "4-pt field goal", False, ""),
+            "basketball": ("NBA", "Los Angeles Lakers", "LAL", (85, 37, 130, 255), (253, 185, 39, 255), "3-POINTER!", 3, "3-pointer", False, ""),
+            "baseball": ("MLB", "New York Yankees", "NYY", (12, 35, 64, 255), (255, 255, 255, 255), "HOME RUN!", 1, "home run", False, ""),
+            "hockey": ("NHL", "Vegas Golden Knights", "VGK", (180, 151, 90, 255), (51, 63, 72, 255), "GOAL!", 1, "goal", False, ""),
+            "soccer": ("MLS", "Inter Miami CF", "MIA", (247, 181, 206, 255), (0, 0, 0, 255), "GOAL!", 1, "goal", False, ""),
+            "victory": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "VICTORY!", 0, "", True, "FINAL: LV 22 - HOU 20")
+        }
+        cfg = samples.get(anim_type, samples["football_td"])
+        with self._lock:
+            if self.is_animating:
+                return
+            self.is_animating = True
+            self._cancel_requested = False
+
+        threading.Thread(
+            target=self._run_celebration_worker,
+            args=(cfg[0], cfg[1], cfg[2], cfg[3], cfg[4], cfg[5], cfg[6], cfg[7], cfg[8], cfg[9], True),
             daemon=True
         ).start()
 
@@ -175,7 +202,8 @@ class CelebrationManager:
         score_delta: int,
         event_detail: str = "",
         is_victory: bool = False,
-        custom_subtitle: str = ""
+        custom_subtitle: str = "",
+        force_preview: bool = False
     ):
         try:
             sport_slug = ""
@@ -194,37 +222,48 @@ class CelebrationManager:
             if not controller:
                 return
 
-            # Guard: Only play score celebration on Game Hub pages
-            active_page = getattr(controller, "active_page", None)
-            if not active_page:
-                return
+            if not force_preview:
+                # 1. Guard: Only play score celebration on Game Hub pages
+                active_page = getattr(controller, "active_page", None)
+                if not active_page:
+                    return
 
-            page_name = ""
-            if hasattr(active_page, "get_name") and callable(active_page.get_name):
-                try:
-                    page_name = active_page.get_name()
-                except Exception:
-                    pass
-            if not page_name:
-                page_name = str(getattr(active_page, "name", ""))
-            json_path = str(getattr(active_page, "json_path", ""))
+                page_name = ""
+                if hasattr(active_page, "get_name") and callable(active_page.get_name):
+                    try:
+                        page_name = active_page.get_name()
+                    except Exception:
+                        pass
+                if not page_name:
+                    page_name = str(getattr(active_page, "name", ""))
+                json_path = str(getattr(active_page, "json_path", ""))
 
-            is_game_hub = ("GameHub" in page_name) or ("GameHub" in json_path)
-            if not is_game_hub:
-                # Never play animation on main profile or other pages
-                return
+                is_game_hub = ("GameHub" in page_name) or ("GameHub" in json_path)
+                if not is_game_hub:
+                    # Never play animation on main profile or other pages
+                    return
 
-            # Check if celebrations are enabled on the active GameHub action
-            all_actions = active_page.get_all_actions()
-            celebrations_enabled = True
-            for act in all_actions:
-                if act.__class__.__name__ == "GameHubAction":
-                    settings = act.get_settings()
-                    celebrations_enabled = settings.get("enable_celebrations", True)
-                    break
+                # 2. Check Global Plugin Setting (Master toggle)
+                global_enabled = True
+                if hasattr(self, "plugin_base") and self.plugin_base:
+                    global_enabled = self.plugin_base.get_settings().get("enable_celebrations", True)
+                elif hasattr(self.sports_service, "plugin_base") and self.sports_service.plugin_base:
+                    global_enabled = self.sports_service.plugin_base.get_settings().get("enable_celebrations", True)
 
-            if not celebrations_enabled:
-                return
+                if not global_enabled:
+                    return
+
+                # 3. Check Per-Action Setting on active GameHubAction
+                all_actions = active_page.get_all_actions()
+                action_enabled = True
+                for act in all_actions:
+                    if act.__class__.__name__ == "GameHubAction":
+                        settings = act.get_settings()
+                        action_enabled = settings.get("enable_celebrations", True)
+                        break
+
+                if not action_enabled:
+                    return
 
             cols, rows = 8, 4
             deck = getattr(controller, "deck", None)
@@ -265,11 +304,7 @@ class CelebrationManager:
             sport_renderer = self._draw_default_background
             if is_victory:
                 sport_renderer = self._draw_victory_background
-            elif is_fg:
-                sport_renderer = lambda d, cw, ch, pr, sr, fi, prg, c, r: self._draw_field_goal_background(
-                    d, cw, ch, pr, sr, fi, prg, c, r, logo_img=logo_img, is_ufl_mega=is_ufl_mega, frame_canvas=frame_canvas
-                )
-            elif sport_slug == "football":
+            elif sport_slug == "football" and not is_fg:
                 sport_renderer = self._draw_football_background
             elif sport_slug == "basketball":
                 sport_renderer = self._draw_basketball_background
@@ -298,17 +333,24 @@ class CelebrationManager:
                 if self._cancel_requested:
                     break
 
-                # Abort if active page has changed away from GameHub
-                current_page = getattr(controller, "active_page", None)
-                if not current_page or ("GameHub" not in str(getattr(current_page, "name", "")) and "GameHub" not in str(getattr(current_page, "json_path", ""))):
-                    break
+                if not force_preview:
+                    # Abort if active page has changed away from GameHub
+                    current_page = getattr(controller, "active_page", None)
+                    if not current_page or ("GameHub" not in str(getattr(current_page, "name", "")) and "GameHub" not in str(getattr(current_page, "json_path", ""))):
+                        break
 
                 frame_canvas = Image.new("RGBA", (canvas_w, canvas_h), (16, 18, 24, 255))
                 draw = ImageDraw.Draw(frame_canvas)
                 progress = frame_idx / total_frames
 
                 # Draw sport-specific background
-                sport_renderer(draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows)
+                if is_fg:
+                    self._draw_field_goal_background(
+                        draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows,
+                        logo_img=logo_img, is_ufl_mega=is_ufl_mega, frame_canvas=frame_canvas
+                    )
+                else:
+                    sport_renderer(draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows)
 
                 # Center pulsing logo (suppressed during Field Goal so uprights remain clear)
                 if logo_img and not is_fg:

@@ -172,26 +172,13 @@ class TeamScoreAction(ActionBase):
         # 2. Main Body: Live/Recent Final Score vs Pre-Game/Off-Season Team Display
         is_live_or_recent_final = (state.status_state in ("in", "post"))
 
-        # Determine if this team won the match in post-game state
-        is_winner = False
-        if state.status_state == "post" and state.away_team.score and state.home_team.score:
-            try:
-                away_sc = int(state.away_team.score)
-                home_sc = int(state.home_team.score)
-                if team.is_home and home_sc > away_sc:
-                    is_winner = True
-                elif (not team.is_home) and away_sc > home_sc:
-                    is_winner = True
-            except Exception:
-                pass
-
         if is_live_or_recent_final:
             # Watermark logo behind score
             if team.logo_url:
                 logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(56, 56))
                 if logo:
                     alpha = logo.split()[3]
-                    alpha = ImageEnhance.Brightness(alpha).enhance(0.40 if is_winner else 0.35)
+                    alpha = ImageEnhance.Brightness(alpha).enhance(0.35)
                     faded_logo = logo.copy()
                     faded_logo.putalpha(alpha)
 
@@ -211,9 +198,8 @@ class TeamScoreAction(ActionBase):
                     if ox != 0 or oy != 0:
                         draw.text((cx + ox, cy + oy), score_val, fill=outline_color, anchor="mm", font=font_score)
 
-            # Main score text (gold if winner, white otherwise)
-            score_color = (255, 225, 50, 255) if is_winner else (255, 255, 255, 255)
-            draw.text((cx, cy), score_val, fill=score_color, anchor="mm", font=font_score)
+            # Crisp white score text
+            draw.text((cx, cy), score_val, fill=(255, 255, 255, 255), anchor="mm", font=font_score)
         else:
             # UPCOMING PRE-GAME / OFF-SEASON: No score shown! Crisp centered team logo
             if team.logo_url:
@@ -226,22 +212,16 @@ class TeamScoreAction(ActionBase):
                 font_name = get_bundled_font(12)
                 draw.text((50, 52), team.short_name[:8], fill=(220, 225, 235, 255), anchor="mm", font=font_name)
 
-        # 3. Footer Bar: Record / Winner Badge / Status
-        footer_bg = (20, 60, 32, 255) if is_winner else (16, 18, 22, 255)
+        # 3. Footer Bar: Record / Status
+        footer_bg = (16, 18, 22, 255)
         draw.rectangle([(0, 78), (100, 100)], fill=footer_bg)
-        draw.line([(0, 78), (100, 78)], fill=(255, 215, 0, 160) if is_winner else (45, 50, 60, 255), width=1)
+        draw.line([(0, 78), (100, 78)], fill=(45, 50, 60, 255), width=1)
 
         font_footer = get_bundled_font(11)
-        if is_winner:
-            footer_text = f"★ WIN • {team.record}" if team.record else "★ WINNER ★"
-            draw.text((50, 89), footer_text[:14], fill=(255, 225, 50, 255), anchor="mm", font=font_footer)
-        else:
-            footer_text = team.record if team.record else team.short_name
-            draw.text((50, 89), footer_text[:14], fill=(180, 190, 205, 255), anchor="mm", font=font_footer)
+        footer_text = team.record if team.record else team.short_name
+        draw.text((50, 89), footer_text[:14], fill=(180, 190, 205, 255), anchor="mm", font=font_footer)
 
-        # Outer key border (gold outline if winner)
-        border_color = (255, 215, 0, 255) if is_winner else (50, 55, 68, 255)
-        border_width = 2 if is_winner else 1
-        draw.rectangle([(0, 0), (99, 99)], outline=border_color, width=border_width)
+        # Outer key border
+        draw.rectangle([(0, 0), (99, 99)], outline=(50, 55, 68, 255), width=1)
 
         self.set_media(image=img)
