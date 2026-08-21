@@ -167,6 +167,7 @@ class SportsService:
 
         # Origin page memory for return buttons: deck_id -> page_obj_or_path
         self.origin_pages: dict[int, str] = {}
+        self.origin_callers: dict[int, dict] = {}
 
         from .CelebrationManager import CelebrationManager
         self.celebration_manager = CelebrationManager(self)
@@ -451,15 +452,75 @@ class SportsService:
         threading.Thread(target=_fetch_headshot_bg, daemon=True).start()
         return None
 
-    # --- Origin Page Memory for Navigation ---
+    # --- Origin Page & Caller Memory for Navigation & Settings Sync ---
     def set_origin_page(self, deck_id: int, page_obj_or_path):
         with self._lock:
             if page_obj_or_path:
                 self.origin_pages[deck_id] = page_obj_or_path
 
+    def set_origin_caller(self, deck_id: int, page_obj, coords: tuple[int, int] | None, action_obj=None):
+        with self._lock:
+            if page_obj:
+                self.origin_pages[deck_id] = page_obj
+                self.origin_callers[deck_id] = {
+                    "page": page_obj,
+                    "coords": (coords[0], coords[1]) if (coords and isinstance(coords, (list, tuple)) and len(coords) >= 2) else None,
+                    "action": action_obj
+                }
+
     def get_origin_page(self, deck_id: int):
         with self._lock:
             return self.origin_pages.get(deck_id)
+
+    def get_origin_caller(self, deck_id: int) -> dict | None:
+        with self._lock:
+            return self.origin_callers.get(deck_id)
+
+    def sync_origin_caller_settings(self, deck_id: int, new_league: str, new_team_id: str):
+        """
+        Synchronizes newly selected league and team_id back to the specific originating scoreboard action
+        on the user's main profile, preserving all other scoreboard rows.
+        """
+        with self._lock:
+            caller = self.origin_callers.get(deck_id)
+        if not caller:
+            return
+
+        # 1. Update in-memory action instance if present
+        action_obj = caller.get("action")
+        if action_obj and hasattr(action_obj, "get_settings") and hasattr(action_obj, "set_settings"):
+            try:
+                st = action_obj.get_settings()
+                st["league"] = new_league
+                st["team_id"] = str(new_team_id)
+                action_obj.set_settings(st)
+                if hasattr(action_obj, "update_display"):
+                    action_obj.update_display()
+            except Exception:
+                pass
+
+        # 2. Persist to originating page JSON file on disk
+        page_obj = caller.get("page")
+        coords = caller.get("coords")
+        if page_obj and coords and hasattr(page_obj, "json_path"):
+            page_path = getattr(page_obj, "json_path", "")
+            if page_path and os.path.exists(page_path):
+                try:
+                    with open(page_path, "r") as f:
+                        data = json.load(f)
+                    coord_key = f"{coords[0]}x{coords[1]}"
+                    key_data = data.get("keys", {}).get(coord_key, {})
+                    actions = key_data.get("states", {}).get("0", {}).get("actions", [])
+                    for act in actions:
+                        if "GameHubAction" in act.get("id", ""):
+                            if "settings" not in act:
+                                act["settings"] = {}
+                            act["settings"]["league"] = new_league
+                            act["settings"]["team_id"] = str(new_team_id)
+                    with open(page_path, "w") as f:
+                        json.dump(data, f, indent=4)
+                except Exception:
+                    pass
 
     # --- Detailed Game Summary Management ---
     def get_game_summary(self, league_key: str, team_id: str) -> GameSummary:

@@ -264,7 +264,8 @@ class GameHubAction(ActionBase):
                 if origin is not None:
                     json_path = getattr(origin, "json_path", "")
                     if not ("GameHub" in os.path.basename(str(json_path))):
-                        self.plugin_base.sports_service.set_origin_page(id(controller), origin)
+                        coords = getattr(self.input_ident, "coords", None)
+                        self.plugin_base.sports_service.set_origin_caller(id(controller), origin, coords, action_obj=self)
 
                 page_obj = gl.page_manager.get_page(user_page_path, deck_controller=controller)
                 if page_obj:
@@ -485,6 +486,14 @@ class GameHubAction(ActionBase):
             self.plugin_base.sports_service.register_hub(id(self), coords, new_league, team_id, display_mode, action_obj=self)
             self.plugin_base.sports_service.fetch_async(new_league, team_id, force=True)
             self.plugin_base.sports_service.fetch_game_summary(new_league, team_id, force=True)
+
+            # Sync back to caller action on main profile if currently inside Game Hub page
+            page_path = getattr(self.page, "json_path", "") if getattr(self, "page", None) else ""
+            if "GameHub" in os.path.basename(str(page_path)):
+                controller = self.get_deck_controller_to_use()
+                if controller:
+                    self.plugin_base.sports_service.sync_origin_caller_settings(id(controller), new_league, team_id)
+
             self.plugin_base.sports_service.notify_all()
             self.update_display()
 
@@ -506,6 +515,14 @@ class GameHubAction(ActionBase):
             self.plugin_base.sports_service.register_hub(id(self), coords, league, team_id, display_mode, action_obj=self)
             self.plugin_base.sports_service.fetch_async(league, team_id, force=True)
             self.plugin_base.sports_service.fetch_game_summary(league, team_id, force=True)
+
+            # Sync back to caller action on main profile if currently inside Game Hub page
+            page_path = getattr(self.page, "json_path", "") if getattr(self, "page", None) else ""
+            if "GameHub" in os.path.basename(str(page_path)):
+                controller = self.get_deck_controller_to_use()
+                if controller:
+                    self.plugin_base.sports_service.sync_origin_caller_settings(id(controller), league, team_id)
+
             self.plugin_base.sports_service.notify_all()
             self.update_display()
 
