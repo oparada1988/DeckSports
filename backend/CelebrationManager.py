@@ -167,18 +167,52 @@ class CelebrationManager:
         ).start()
 
     def trigger_test_preview(self, anim_type: str):
-        """Plays any of the 8 celebration animations as a forced live preview across connected hardware."""
+        """Plays any of the sport-specific celebration animations as a forced live preview across connected hardware."""
         samples = {
-            "football_td": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "TOUCHDOWN!", 6, "touchdown", False, ""),
-            "field_goal": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "FIELD GOAL!", 3, "field goal", False, ""),
-            "ufl_mega": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "4-PT FIELD GOAL!", 4, "4-pt field goal", False, ""),
-            "basketball": ("NBA", "Los Angeles Lakers", "LAL", (85, 37, 130, 255), (253, 185, 39, 255), "3-POINTER!", 3, "3-pointer", False, ""),
-            "baseball": ("MLB", "New York Yankees", "NYY", (12, 35, 64, 255), (255, 255, 255, 255), "HOME RUN!", 1, "home run", False, ""),
-            "hockey": ("NHL", "Vegas Golden Knights", "VGK", (180, 151, 90, 255), (51, 63, 72, 255), "GOAL!", 1, "goal", False, ""),
-            "soccer": ("MLS", "Inter Miami CF", "MIA", (247, 181, 206, 255), (0, 0, 0, 255), "GOAL!", 1, "goal", False, ""),
-            "victory": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "VICTORY!", 0, "", True, "FINAL: LV 22 - HOU 20")
+            # NFL (American Football)
+            "nfl_td": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "TOUCHDOWN!", 6, "touchdown", False, ""),
+            "nfl_fg": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "FIELD GOAL! (+3 PTS)", 3, "field goal", False, ""),
+            "nfl_pat": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "EXTRA POINT GOOD!", 1, "extra point", False, ""),
+            "nfl_2pt": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "2-PT CONVERSION!", 2, "2-pt conversion", False, ""),
+            "nfl_safety": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "SAFETY! (+2 PTS)", 2, "safety", False, ""),
+
+            # UFL (Spring Football - Official Rules)
+            "ufl_td": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "TOUCHDOWN!", 6, "touchdown", False, ""),
+            "ufl_4pt": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "4-PT SUPER KICK!", 4, "4-pt field goal", False, "60+ YD MONSTER FIELD GOAL! (+4 PTS)"),
+            "ufl_fg": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "FIELD GOAL! (+3 PTS)", 3, "field goal", False, ""),
+            "ufl_3pt": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "3-PT CONVERSION!", 3, "3-pt conversion", False, "8-YD SCRIMMAGE / 9-PT SUPER DRIVE"),
+            "ufl_2pt": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "2-PT CONVERSION!", 2, "2-pt conversion", False, "2-YD SCRIMMAGE CONVERSION"),
+            "ufl_1pt": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "1-PT CONVERSION!", 1, "1-pt conversion", False, "33-YD PAT FIELD GOAL"),
+            "ufl_ot": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "OVERTIME CONVERSION GOOD!", 2, "overtime", False, "UFL OVERTIME SHOOTOUT"),
+            "ufl_safety": ("UFL", "DC Defenders", "DC", (200, 16, 46, 255), (255, 255, 255, 255), "SAFETY! (+2 PTS)", 2, "safety", False, ""),
+
+            # Basketball (NBA, WNBA, NCAA)
+            "nba_dunk": ("NBA", "Los Angeles Lakers", "LAL", (85, 37, 130, 255), (253, 185, 39, 255), "SLAM DUNK!", 2, "dunk", False, ""),
+            "nba_3pt": ("NBA", "Golden State Warriors", "GSW", (29, 66, 138, 255), (255, 199, 44, 255), "3-POINTER FROM DOWNTOWN!", 3, "3-pointer", False, ""),
+            "nba_buzzer": ("NBA", "Boston Celtics", "BOS", (0, 122, 51, 255), (255, 255, 255, 255), "BUZZER BEATER WINNER!", 3, "buzzer beater", False, ""),
+            "nba_ft": ("NBA", "Los Angeles Lakers", "LAL", (85, 37, 130, 255), (253, 185, 39, 255), "FREE THROW!", 1, "free throw", False, ""),
+
+            # MLB (Baseball)
+            "mlb_grand_slam": ("MLB", "New York Yankees", "NYY", (12, 35, 64, 255), (255, 255, 255, 255), "GRAND SLAM!", 4, "grand slam", False, "4-RUN BASES LOADED HOME RUN"),
+            "mlb_hr": ("MLB", "Los Angeles Dodgers", "LAD", (0, 90, 156, 255), (255, 255, 255, 255), "HOME RUN!", 1, "home run", False, ""),
+            "mlb_walkoff": ("MLB", "Houston Astros", "HOU", (0, 45, 98, 255), (235, 110, 31, 255), "WALK-OFF WINNER!", 1, "walk-off", False, "GAME WINNING HIT"),
+            "mlb_rbi": ("MLB", "Boston Red Sox", "BOS", (189, 48, 57, 255), (13, 43, 86, 255), "RUN SCORED!", 1, "rbi", False, ""),
+
+            # NHL (Hockey)
+            "nhl_goal": ("NHL", "Vegas Golden Knights", "VGK", (180, 151, 90, 255), (51, 63, 72, 255), "GOAL!", 1, "goal", False, ""),
+            "nhl_ppg": ("NHL", "Edmonton Oilers", "EDM", (4, 30, 66, 255), (255, 79, 0, 255), "POWER PLAY GOAL! (PPG)", 1, "ppg", False, "5-ON-4 POWER PLAY ADVANTAGE"),
+            "nhl_shg": ("NHL", "Boston Bruins", "BOS", (252, 181, 20, 255), (0, 0, 0, 255), "SHORT-HANDED GOAL! (SHG)", 1, "shg", False, "4-ON-5 PENALTY KILL BREAKAWAY"),
+            "nhl_en": ("NHL", "New York Rangers", "NYR", (0, 56, 168, 255), (206, 17, 38, 255), "EMPTY NET GOAL! (EN)", 1, "empty net", False, ""),
+
+            # Soccer (MLS, Premier League)
+            "mls_goal": ("MLS", "Inter Miami CF", "MIA", (247, 181, 206, 255), (0, 0, 0, 255), "GOAL!", 1, "goal", False, ""),
+            "mls_pk": ("MLS", "LA Galaxy", "LA", (0, 36, 93, 255), (255, 210, 0, 255), "PENALTY GOAL! (PK)", 1, "pk", False, "SPOT KICK CONVERSION"),
+            "mls_shootout": ("MLS", "Seattle Sounders FC", "SEA", (0, 85, 149, 255), (93, 184, 45, 255), "SHOOTOUT GOAL!", 1, "shootout", False, "DECISIVE PENALTY SHOOTOUT"),
+
+            # Post-Game Victory (All Sports)
+            "victory_jumbotron": ("NFL", "Las Vegas Raiders", "LV", (0, 0, 0, 255), (165, 172, 175, 255), "VICTORY!", 0, "", True, "FINAL: LV 22 - HOU 20")
         }
-        cfg = samples.get(anim_type, samples["football_td"])
+        cfg = samples.get(anim_type, samples["nfl_td"])
         with self._lock:
             if self.is_animating:
                 return

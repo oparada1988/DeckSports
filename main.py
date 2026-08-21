@@ -288,42 +288,115 @@ class DeckSports(PluginBase):
         celeb_row.connect("notify::active", on_celeb_toggled)
         main_group.add(celeb_row)
 
-        # 2. Animation Testing Station Combo
-        anim_types = [
-            ("🏈 Football Touchdown (Gridiron & Confetti)", "football_td"),
-            ("🎯 3D Field Goal (\"IT'S GOOD!\")", "field_goal"),
-            ("⚡ UFL 4-Point Mega Kick (Lightning)", "ufl_mega"),
-            ("🏀 Basketball 3-Pointer / Slam Dunk", "basketball"),
-            ("⚾ Baseball Home Run / Grand Slam", "baseball"),
-            ("🏒 Hockey Goal / Red Siren", "hockey"),
-            ("⚽ Soccer Goal / Penalty Kick", "soccer"),
-            ("🏆 Victory Jumbotron (Post-Game Finale)", "victory")
+        # 2. League / Sport Category Definitions and Animation Mappings (No Emojis)
+        category_options = [
+            ("NFL (American Football)", "NFL"),
+            ("UFL (Spring Football)", "UFL"),
+            ("Basketball (NBA, WNBA, NCAA)", "BASKETBALL"),
+            ("MLB (Baseball)", "MLB"),
+            ("NHL (Hockey)", "NHL"),
+            ("Soccer (MLS, Premier League)", "SOCCER"),
+            ("Post-Game Victory (All Sports)", "VICTORY")
         ]
 
-        anim_model = Gtk.StringList.new([name for name, _ in anim_types])
-        test_combo_row = Adw.ComboRow(
-            title="Celebration Animation Test Suite",
-            subtitle="Select any sport celebration to preview live on your Stream Deck",
+        animations_by_category = {
+            "NFL": [
+                ("Touchdown (Turf, Endzone & Confetti)", "nfl_td"),
+                ("3D Perspective Field Goal (Uprights, Stanchion & Tip Strobe)", "nfl_fg"),
+                ("Extra Point (PAT Kick Good)", "nfl_pat"),
+                ("2-Point Conversion", "nfl_2pt"),
+                ("Safety (+2 Points)", "nfl_safety")
+            ],
+            "UFL": [
+                ("Touchdown (Gridiron & Endzone)", "ufl_td"),
+                ("4-Point Super Kick (60+ Yd Electrified Uprights & Lightning)", "ufl_4pt"),
+                ("Standard 3-Point Field Goal (3D Uprights & Kick)", "ufl_fg"),
+                ("3-Point Conversion (8-Yard Scrimmage / 9-Pt Super Drive)", "ufl_3pt"),
+                ("2-Point Conversion (2-Yard Scrimmage)", "ufl_2pt"),
+                ("1-Point Conversion (33-Yard Kick)", "ufl_1pt"),
+                ("Overtime Shootout Conversion", "ufl_ot"),
+                ("Safety (+2 Points)", "ufl_safety")
+            ],
+            "BASKETBALL": [
+                ("Slam Dunk (Arena Backboard Red LED Perimeter Strobe)", "nba_dunk"),
+                ("3-Pointer (From Downtown & Court Arcs)", "nba_3pt"),
+                ("Buzzer Beater Winner", "nba_buzzer"),
+                ("Free Throw", "nba_ft")
+            ],
+            "MLB": [
+                ("Grand Slam (4 Bases Illuminated & Golden Fireworks)", "mlb_grand_slam"),
+                ("Home Run (Diamond Dirt & Outfield Glow)", "mlb_hr"),
+                ("Walk-Off Winner", "mlb_walkoff"),
+                ("Run Scored (RBI Hit)", "mlb_rbi")
+            ],
+            "NHL": [
+                ("Goal (Ice Rink Sheen & Top-Row Rotating Red Goal Horn Sirens)", "nhl_goal"),
+                ("Power Play Goal (PPG)", "nhl_ppg"),
+                ("Short-Handed Goal (SHG)", "nhl_shg"),
+                ("Empty Net Goal (EN)", "nhl_en")
+            ],
+            "SOCCER": [
+                ("Goal (Pitch Lawn Mower Bands & Net Ripple Shockwaves)", "mls_goal"),
+                ("Penalty Kick Goal (PK)", "mls_pk"),
+                ("Shootout Decider", "mls_shootout")
+            ],
+            "VICTORY": [
+                ("Victory Jumbotron (Confetti Shower, Starbursts & Final Scores)", "victory_jumbotron")
+            ]
+        }
+
+        # Dropdown 1: League / Sport Selection
+        league_model = Gtk.StringList.new([label for label, _ in category_options])
+        league_combo_row = Adw.ComboRow(
+            title="League / Sport Selection",
+            subtitle="Choose a sport league to filter available scoring animations",
+            model=league_model
+        )
+        league_combo_row.set_selected(0)
+        main_group.add(league_combo_row)
+
+        # Dropdown 2: Dynamic Animation Selection
+        initial_cat_key = category_options[0][1]
+        initial_anims = animations_by_category[initial_cat_key]
+        anim_model = Gtk.StringList.new([label for label, _ in initial_anims])
+        anim_combo_row = Adw.ComboRow(
+            title="Scoring Celebration Animation",
+            subtitle="Select the specific scoring celebration to test",
             model=anim_model
         )
-        test_combo_row.set_selected(0)
-        main_group.add(test_combo_row)
+        anim_combo_row.set_selected(0)
+        main_group.add(anim_combo_row)
 
-        # 3. Trigger Preview Button Row
+        def on_league_changed(row, _pspec):
+            selected_idx = row.get_selected()
+            if 0 <= selected_idx < len(category_options):
+                _, cat_key = category_options[selected_idx]
+                anims = animations_by_category.get(cat_key, [])
+                new_model = Gtk.StringList.new([label for label, _ in anims])
+                anim_combo_row.set_model(new_model)
+                anim_combo_row.set_selected(0)
+
+        league_combo_row.connect("notify::selected", on_league_changed)
+
+        # Preview Action Row with Play Button
         test_action_row = Adw.ActionRow(
             title="Preview Selected Animation",
-            subtitle="Broadcasts the full-deck animation to your deck and UI preview"
+            subtitle="Broadcasts the full-deck animation to your deck hardware and desktop preview"
         )
         play_btn = Gtk.Button(label="Play Live Preview")
         play_btn.set_valign(Gtk.Align.CENTER)
         play_btn.add_css_class("suggested-action")
 
         def on_play_clicked(_btn):
-            selected_idx = test_combo_row.get_selected()
-            if 0 <= selected_idx < len(anim_types):
-                _, anim_key = anim_types[selected_idx]
-                if hasattr(self.sports_service, "celebration_manager"):
-                    self.sports_service.celebration_manager.trigger_test_preview(anim_key)
+            league_idx = league_combo_row.get_selected()
+            if 0 <= league_idx < len(category_options):
+                _, cat_key = category_options[league_idx]
+                anims = animations_by_category.get(cat_key, [])
+                anim_idx = anim_combo_row.get_selected()
+                if 0 <= anim_idx < len(anims):
+                    _, anim_key = anims[anim_idx]
+                    if hasattr(self.sports_service, "celebration_manager"):
+                        self.sports_service.celebration_manager.trigger_test_preview(anim_key)
 
         play_btn.connect("clicked", on_play_clicked)
         test_action_row.add_suffix(play_btn)
