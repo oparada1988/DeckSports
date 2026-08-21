@@ -332,8 +332,19 @@ class CelebrationManager:
             s_rgb = alt_color[:3] if len(alt_color) >= 3 else (200, 205, 215)
 
             # Select background renderer based on sport and scoring event
-            is_fg = (not is_victory and sport_slug == "football" and ("FIELD GOAL" in celebration_text or "SUPER KICK" in celebration_text or score_delta in (3, 4)))
-            is_ufl_mega = (not is_victory and league_key == "UFL" and ("SUPER KICK" in celebration_text or score_delta == 4))
+            is_conversion = any(kw in celebration_text for kw in ("CONVERSION", "CONV", "EXTRA POINT", "PAT", "SHOOTOUT"))
+            is_fg = (
+                not is_victory
+                and not is_conversion
+                and sport_slug == "football"
+                and ("FIELD GOAL" in celebration_text or "SUPER KICK" in celebration_text or (score_delta == 3 and not is_conversion))
+            )
+            is_ufl_mega = (
+                not is_victory
+                and not is_conversion
+                and league_key == "UFL"
+                and ("SUPER KICK" in celebration_text or ("4-PT" in celebration_text and not is_conversion) or score_delta == 4)
+            )
 
             sport_renderer = self._draw_default_background
             if is_victory:
@@ -639,102 +650,188 @@ class CelebrationManager:
                         draw.ellipse([(sx - 3, sy - 3), (sx + 3, sy + 3)], fill=(255, 220, 50, spark_alpha))
 
     def _draw_field_goal_background(self, draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows, logo_img=None, is_ufl_mega=False, frame_canvas=None):
-        """Field Goal: 3D perspective uprights with team logo padded post, flying football trajectory, and tip flashes."""
-        # 1. Stadium night sky
-        sky_r = min(255, max(0, int(p_rgb[0] * 0.12 + 10)))
-        sky_g = min(255, max(0, int(p_rgb[1] * 0.12 + 15)))
-        sky_b = min(255, max(0, int(p_rgb[2] * 0.12 + 35)))
-        draw.rectangle([(0, 0), (canvas_w, canvas_h)], fill=(sky_r, sky_g, sky_b, 255))
+        """Field Goal / Mega Kick: 2-Phase Cinematic Sequence (Phase 1: Kicker Strike -> Phase 2: 3D Uprights Split)."""
+        if progress < 0.32:
+            # -----------------------------------------------------------------
+            # PHASE 1: Close-up Turf Camera (Holder & Kicker Strike)
+            # -----------------------------------------------------------------
+            p1 = progress / 0.32  # 0.0 -> 1.0 within Phase 1
 
-        # Stadium lights
-        for lx in (int(canvas_w * 0.12), int(canvas_w * 0.88)):
-            draw.ellipse([(lx - 50, -20), (lx + 50, 60)], fill=(255, 255, 220, 50))
+            # 1. Close-up Turf Field
+            turf_dark = (16, 52, 24, 255)
+            turf_light = (22, 68, 30, 255)
+            draw.rectangle([(0, 0), (canvas_w, canvas_h)], fill=turf_dark)
+            for y in range(0, canvas_h, 30):
+                if (y // 30) % 2 == 0:
+                    draw.rectangle([(0, y), (canvas_w, min(canvas_h, y + 30))], fill=turf_light)
 
-        # Turf grass at bottom
-        turf_y = int(canvas_h * 0.72)
-        draw.rectangle([(0, turf_y), (canvas_w, canvas_h)], fill=(20, 65, 30, 255))
-        for gy in range(turf_y, canvas_h, 15):
-            draw.rectangle([(0, gy), (canvas_w, min(canvas_h, gy + 7))], fill=(25, 78, 36, 255))
-        draw.line([(0, turf_y), (canvas_w, turf_y)], fill=(240, 245, 255, 180), width=3)
+            # Yard chalk lines & hash marks
+            draw.line([(0, int(canvas_h * 0.76)), (canvas_w, int(canvas_h * 0.76))], fill=(240, 245, 255, 200), width=4)
+            for hx in range(40, canvas_w, 60):
+                draw.line([(hx, int(canvas_h * 0.65)), (hx, int(canvas_h * 0.73))], fill=(240, 245, 255, 140), width=3)
 
-        # 2. Upright Dimensions
-        cx = canvas_w // 2
-        post_bottom = canvas_h - 10
-        crossbar_y = int(canvas_h * 0.44)
-        upright_top = int(canvas_h * 0.08)
-        post_width = 8 if cols >= 8 else 6
-        goal_w = int(canvas_w * 0.38) if cols >= 8 else int(canvas_w * 0.46)
-        left_x = cx - goal_w // 2
-        right_x = cx + goal_w // 2
+            # Stadium lights glare at upper edge
+            for lx in (int(canvas_w * 0.2), int(canvas_w * 0.8)):
+                draw.ellipse([(lx - 80, -40), (lx + 80, 50)], fill=(255, 255, 230, 40))
 
-        goal_color = (255, 215, 0, 255)  # Gold
+            # 2. Football Placement on Tee / Turf
+            ball_base_x = canvas_w // 2 + 10
+            ball_base_y = int(canvas_h * 0.72)
 
-        # 3. Base Post with Team Padded Protector
-        draw.rectangle([(cx - post_width // 2, crossbar_y), (cx + post_width // 2, post_bottom)], fill=goal_color)
+            # 3. Holder Silhouette (Kneeling to the left of the ball)
+            hx = ball_base_x - 36
+            hy = ball_base_y
+            # Holder Helmet
+            draw.ellipse([(hx - 14, hy - 48), (hx + 14, hy - 20)], fill=s_rgb)
+            draw.ellipse([(hx - 12, hy - 46), (hx + 12, hy - 22)], fill=p_rgb)
+            # Holder Body (Kneeling posture)
+            draw.polygon([(hx - 22, hy - 20), (hx + 18, hy - 20), (hx + 26, hy + 24), (hx - 30, hy + 24)], fill=p_rgb)
+            # Holder Arm reaching to top of ball
+            draw.line([(hx + 10, hy - 8), (ball_base_x, ball_base_y - 18)], fill=s_rgb, width=4)
 
-        # Team protective pad on lower portion of post
-        pad_top = int(canvas_h * 0.60)
-        pad_w = post_width + 24
-        pad_left = cx - pad_w // 2
-        pad_right = cx + pad_w // 2
-        draw.rectangle([(pad_left, pad_top), (pad_right, post_bottom)], fill=p_rgb)
-        draw.rectangle([(pad_left, pad_top), (pad_right, post_bottom)], outline=s_rgb, width=2)
+            # 4. Kicker in Motion (Approaching from left and swinging leg)
+            kx = int(canvas_w * 0.22 + p1 * (ball_base_x - canvas_w * 0.22 - 35))
+            ky = ball_base_y - 10
 
-        # Mini team logo on pad
-        if logo_img and frame_canvas:
-            pad_h = post_bottom - pad_top
-            max_pad_logo = min(pad_w - 4, pad_h - 6)
-            if max_pad_logo >= 12:
-                try:
-                    mini_logo = logo_img.resize((max_pad_logo, max_pad_logo), Image.Resampling.BILINEAR)
-                    ml_x = cx - max_pad_logo // 2
-                    ml_y = pad_top + (pad_h - max_pad_logo) // 2
-                    frame_canvas.alpha_composite(mini_logo, (ml_x, ml_y))
-                except Exception:
-                    pass
+            # Kicker Helmet & Jersey Torso
+            draw.ellipse([(kx - 16, ky - 75), (kx + 16, ky - 43)], fill=s_rgb)
+            draw.ellipse([(kx - 14, ky - 73), (kx + 14, ky - 45)], fill=p_rgb)
+            draw.polygon([(kx - 20, ky - 43), (kx + 18, ky - 43), (kx + 24, ky + 10), (kx - 18, ky + 10)], fill=p_rgb)
+            # Plant leg (supporting)
+            draw.line([(kx - 4, ky + 10), (kx - 8, ball_base_y + 24)], fill=(25, 28, 35, 255), width=6)
 
-        # 4. Crossbar & Uprights
-        draw.rectangle([(left_x, crossbar_y - post_width // 2), (right_x, crossbar_y + post_width // 2)], fill=goal_color)
-        draw.rectangle([(left_x - post_width // 2, upright_top), (left_x + post_width // 2, crossbar_y)], fill=goal_color)
-        draw.rectangle([(right_x - post_width // 2, upright_top), (right_x + post_width // 2, crossbar_y)], fill=goal_color)
+            # Kicking leg dynamic rotational swing
+            swing_deg = -35.0 + p1 * 100.0
+            rad = math.radians(swing_deg)
+            hip_x = kx + 8
+            hip_y = ky + 6
+            leg_len = 42
+            foot_x = hip_x + int(math.cos(rad) * leg_len)
+            foot_y = hip_y + int(math.sin(rad) * leg_len)
+            draw.line([(hip_x, hip_y), (foot_x, foot_y)], fill=(25, 28, 35, 255), width=7)
+            draw.ellipse([(foot_x - 5, foot_y - 5), (foot_x + 5, foot_y + 5)], fill=s_rgb)
 
-        # 5. UFL Lightning Bolt Effects (Electric Blue & Gold Sparks)
-        if is_ufl_mega:
-            lightning_color = (120, 210, 255, 255) if (frame_idx % 2 == 0) else (255, 220, 50, 255)
-            for bolt_x in (left_x, right_x):
-                for by in range(upright_top, crossbar_y, 25):
-                    offset_x = 10 if (by // 25 + frame_idx) % 2 == 0 else -10
-                    draw.line([(bolt_x, by), (bolt_x + offset_x, by + 12), (bolt_x, by + 25)], fill=lightning_color, width=3)
+            # 5. Impact Flash & Ball Launch Physics
+            if p1 < 0.52:
+                # Ball resting vertically on tee
+                draw.ellipse([(ball_base_x - 9, ball_base_y - 20), (ball_base_x + 9, ball_base_y + 14)], fill=(145, 65, 22, 255), outline=(75, 30, 10, 255))
+                draw.line([(ball_base_x - 5, ball_base_y - 3), (ball_base_x + 5, ball_base_y - 3)], fill=(255, 255, 255, 255), width=2)
+            else:
+                # Moment of Strike & Blast-off!
+                impact_prog = (p1 - 0.52) / 0.48
+                flash_r = int(impact_prog * 130)
+                flash_alpha = max(0, int(220 * (1.0 - impact_prog)))
+                draw.ellipse([(ball_base_x - flash_r, ball_base_y - flash_r), (ball_base_x + flash_r, ball_base_y + flash_r)], outline=(255, 240, 150, flash_alpha), width=3)
+                draw.ellipse([(ball_base_x - 18, ball_base_y - 18), (ball_base_x + 18, ball_base_y + 18)], fill=(255, 255, 255, flash_alpha))
 
-        # 6. Animated Football Trajectory (Perspective Arc)
-        kick_progress = min(1.0, progress * 1.5)
-        ball_y = int(canvas_h + 20 - kick_progress * (canvas_h * 0.70))
-        drift = int(math.sin(kick_progress * math.pi) * 12)
-        ball_x = cx + drift
-        ball_size = max(8, int(26 * (1.0 - kick_progress * 0.55)))
+                # Ball rocketing upward toward the camera
+                cur_ball_y = int(ball_base_y - impact_prog * canvas_h * 1.1)
+                cur_ball_x = int(ball_base_x + impact_prog * (canvas_w * 0.12))
+                cur_ball_sz = int(14 + impact_prog * 36)
+                draw.ellipse([(cur_ball_x - cur_ball_sz, cur_ball_y - cur_ball_sz // 2), (cur_ball_x + cur_ball_sz, cur_ball_y + cur_ball_sz // 2)], fill=(150, 70, 25, 255), outline=(80, 35, 12, 255))
+                draw.line([(cur_ball_x - cur_ball_sz // 2, cur_ball_y), (cur_ball_x + cur_ball_sz // 2, cur_ball_y)], fill=(255, 255, 255, 255), width=3)
 
-        # Comet tail behind ball if UFL Super Kick
-        if is_ufl_mega and kick_progress > 0.1:
-            for t_i in range(5):
-                tail_progress = max(0, kick_progress - t_i * 0.05)
-                ty = int(canvas_h + 20 - tail_progress * (canvas_h * 0.70))
-                tx = cx + int(math.sin(tail_progress * math.pi) * 12)
-                tw = max(4, int(ball_size * 0.8 - t_i * 2))
-                t_color = (255, 140, 20, max(0, 200 - t_i * 40)) if (t_i % 2 == 0) else (100, 200, 255, max(0, 200 - t_i * 40))
-                draw.ellipse([(tx - tw, ty - tw), (tx + tw, ty + tw)], fill=t_color)
+        else:
+            # -----------------------------------------------------------------
+            # PHASE 2: Deep Stadium View & 3D Uprights Split
+            # -----------------------------------------------------------------
+            p2 = (progress - 0.32) / 0.68  # 0.0 -> 1.0 within Phase 2
 
-        # Draw the Football (Leather brown oval with white laces)
-        draw.ellipse([(ball_x - ball_size, ball_y - ball_size // 2), (ball_x + ball_size, ball_y + ball_size // 2)], fill=(150, 70, 25, 255), outline=(90, 40, 15, 255))
-        draw.line([(ball_x - ball_size // 2, ball_y), (ball_x + ball_size // 2, ball_y)], fill=(255, 255, 255, 255), width=2)
-        draw.line([(ball_x, ball_y - 3), (ball_x, ball_y + 3)], fill=(255, 255, 255, 255), width=1)
+            # 1. Stadium night sky
+            sky_r = min(255, max(0, int(p_rgb[0] * 0.12 + 10)))
+            sky_g = min(255, max(0, int(p_rgb[1] * 0.12 + 15)))
+            sky_b = min(255, max(0, int(p_rgb[2] * 0.12 + 35)))
+            draw.rectangle([(0, 0), (canvas_w, canvas_h)], fill=(sky_r, sky_g, sky_b, 255))
 
-        # 7. Tip Strobe Flashes ("IT'S GOOD!") when ball crosses
-        if kick_progress > 0.55:
-            flash_on = ((frame_idx // 2) % 2 == 0)
-            f_color = (255, 255, 255, 255) if flash_on else (255, 220, 50, 255)
-            f_r = 14 if flash_on else 8
-            for tip_x in (left_x, right_x):
-                draw.ellipse([(tip_x - f_r, upright_top - f_r), (tip_x + f_r, upright_top + f_r)], fill=f_color)
+            # Stadium floodlights
+            for lx in (int(canvas_w * 0.12), int(canvas_w * 0.88)):
+                draw.ellipse([(lx - 60, -30), (lx + 60, 70)], fill=(255, 255, 220, 60))
+
+            # Turf field in background
+            turf_y = int(canvas_h * 0.72)
+            draw.rectangle([(0, turf_y), (canvas_w, canvas_h)], fill=(20, 65, 30, 255))
+            for gy in range(turf_y, canvas_h, 15):
+                draw.rectangle([(0, gy), (canvas_w, min(canvas_h, gy + 7))], fill=(25, 78, 36, 255))
+            draw.line([(0, turf_y), (canvas_w, turf_y)], fill=(240, 245, 255, 180), width=3)
+
+            # 2. Upright Dimensions
+            cx = canvas_w // 2
+            post_bottom = canvas_h - 10
+            crossbar_y = int(canvas_h * 0.44)
+            upright_top = int(canvas_h * 0.08)
+            post_width = 8 if cols >= 8 else 6
+            goal_w = int(canvas_w * 0.38) if cols >= 8 else int(canvas_w * 0.46)
+            left_x = cx - goal_w // 2
+            right_x = cx + goal_w // 2
+
+            goal_color = (255, 215, 0, 255)  # Gold
+
+            # 3. Base Post with Team Padded Protector
+            draw.rectangle([(cx - post_width // 2, crossbar_y), (cx + post_width // 2, post_bottom)], fill=goal_color)
+
+            # Team protective pad on lower portion of post
+            pad_top = int(canvas_h * 0.60)
+            pad_w = post_width + 24
+            pad_left = cx - pad_w // 2
+            pad_right = cx + pad_w // 2
+            draw.rectangle([(pad_left, pad_top), (pad_right, post_bottom)], fill=p_rgb)
+            draw.rectangle([(pad_left, pad_top), (pad_right, post_bottom)], outline=s_rgb, width=2)
+
+            # Mini team logo on pad
+            if logo_img and frame_canvas:
+                pad_h = post_bottom - pad_top
+                max_pad_logo = min(pad_w - 4, pad_h - 6)
+                if max_pad_logo >= 12:
+                    try:
+                        mini_logo = logo_img.resize((max_pad_logo, max_pad_logo), Image.Resampling.BILINEAR)
+                        ml_x = cx - max_pad_logo // 2
+                        ml_y = pad_top + (pad_h - max_pad_logo) // 2
+                        frame_canvas.alpha_composite(mini_logo, (ml_x, ml_y))
+                    except Exception:
+                        pass
+
+            # 4. Crossbar & Vertical Uprights
+            draw.rectangle([(left_x, crossbar_y - post_width // 2), (right_x, crossbar_y + post_width // 2)], fill=goal_color)
+            draw.rectangle([(left_x - post_width // 2, upright_top), (left_x + post_width // 2, crossbar_y)], fill=goal_color)
+            draw.rectangle([(right_x - post_width // 2, upright_top), (right_x + post_width // 2, crossbar_y)], fill=goal_color)
+
+            # 5. UFL Lightning Bolt Effects (Electric Blue & Gold Sparks)
+            if is_ufl_mega:
+                lightning_color = (120, 210, 255, 255) if (frame_idx % 2 == 0) else (255, 220, 50, 255)
+                for bolt_x in (left_x, right_x):
+                    for by in range(upright_top, crossbar_y, 25):
+                        offset_x = 10 if (by // 25 + frame_idx) % 2 == 0 else -10
+                        draw.line([(bolt_x, by), (bolt_x + offset_x, by + 12), (bolt_x, by + 25)], fill=lightning_color, width=3)
+
+            # 6. Animated Football Flight (3D Parabolic Trajectory)
+            flight_prog = min(1.0, p2 * 1.35)
+            ball_y = int(canvas_h + 20 - flight_prog * (canvas_h * 0.72))
+            drift = int(math.sin(flight_prog * math.pi) * 10)
+            ball_x = cx + drift
+            ball_size = max(7, int(26 * (1.0 - flight_prog * 0.60)))
+
+            # Comet tail behind ball if UFL Super Kick
+            if is_ufl_mega and flight_prog > 0.08:
+                for t_i in range(5):
+                    tail_progress = max(0, flight_prog - t_i * 0.05)
+                    ty = int(canvas_h + 20 - tail_progress * (canvas_h * 0.72))
+                    tx = cx + int(math.sin(tail_progress * math.pi) * 10)
+                    tw = max(3, int(ball_size * 0.8 - t_i * 2))
+                    t_color = (255, 140, 20, max(0, 200 - t_i * 40)) if (t_i % 2 == 0) else (100, 200, 255, max(0, 200 - t_i * 40))
+                    draw.ellipse([(tx - tw, ty - tw), (tx + tw, ty + tw)], fill=t_color)
+
+            # Draw the Football (Leather brown oval with white laces)
+            draw.ellipse([(ball_x - ball_size, ball_y - ball_size // 2), (ball_x + ball_size, ball_y + ball_size // 2)], fill=(150, 70, 25, 255), outline=(90, 40, 15, 255))
+            draw.line([(ball_x - ball_size // 2, ball_y), (ball_x + ball_size // 2, ball_y)], fill=(255, 255, 255, 255), width=2)
+            draw.line([(ball_x, ball_y - 3), (ball_x, ball_y + 3)], fill=(255, 255, 255, 255), width=1)
+
+            # 7. Tip Strobe Flashes ("IT'S GOOD!") when ball crosses uprights
+            if flight_prog > 0.48:
+                flash_on = ((frame_idx // 2) % 2 == 0)
+                f_color = (255, 255, 255, 255) if flash_on else (255, 220, 50, 255)
+                f_r = 14 if flash_on else 8
+                for tip_x in (left_x, right_x):
+                    draw.ellipse([(tip_x - f_r, upright_top - f_r), (tip_x + f_r, upright_top + f_r)], fill=f_color)
 
     def _draw_football_background(self, draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows):
         """Football: Gridiron turf mower bands, yard chalk lines, hash marks, yard numbers, and endzone slashes."""
