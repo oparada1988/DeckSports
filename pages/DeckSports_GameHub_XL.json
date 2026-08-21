@@ -129,7 +129,7 @@
                         {
                             "id": "com_oparada1988_DeckSports::SituationAction",
                             "settings": {
-                                "mode": "venue_tv"
+                                "mode": "venue"
                             }
                         }
                     ],
@@ -593,9 +593,9 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "id": "com_oparada1988_DeckSports::LineScoreAction",
                             "settings": {
-                                "mode": "auto"
+                                "slot": "ot"
                             }
                         }
                     ],
@@ -614,9 +614,9 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::SituationAction",
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
                             "settings": {
-                                "mode": "ball_spot"
+                                "metric_idx": 6
                             }
                         }
                     ],
@@ -635,8 +635,10 @@
                 "0": {
                     "actions": [
                         {
-                            "id": "com_oparada1988_DeckSports::ScoringSummaryAction",
-                            "settings": {}
+                            "id": "com_oparada1988_DeckSports::TeamStatsCompareAction",
+                            "settings": {
+                                "metric_idx": 7
+                            }
                         }
                     ],
                     "image-control-action": 0,
@@ -656,7 +658,7 @@
                         {
                             "id": "com_oparada1988_DeckSports::SituationAction",
                             "settings": {
-                                "mode": "drive_pp"
+                                "mode": "venue_tv"
                             }
                         }
                     ],

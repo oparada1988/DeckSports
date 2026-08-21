@@ -23,7 +23,9 @@ COMPARE_METRICS = [
     ("Turnovers / Fouls / Penalty Minutes", 2),
     ("Time of Possession / Formations", 3),
     ("League Standings / Division Race", 4),
-    ("Next Upcoming Match", 5),
+    ("Next Upcoming Match Schedule", 5),
+    ("Field Goals / Rebounds / Extra Stats", 6),
+    ("Penalty Minutes / Free Throws / Power Play", 7),
 ]
 
 @lru_cache(maxsize=32)

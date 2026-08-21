@@ -24,6 +24,7 @@ SLOT_OPTIONS = [
     ("Quarter / Period 2 (Q2)", "p2"),
     ("Quarter / Period 3 (Q3)", "p3"),
     ("Quarter / Period 4 (Q4)", "p4"),
+    ("Overtime / Extra Period (OT)", "ot"),
 ]
 
 @lru_cache(maxsize=32)
@@ -180,20 +181,28 @@ class LineScoreAction(ActionBase):
             draw.text((50, 89), f"Q1 Q2 Q3 Q4" if len(lines) >= 4 else f"Total: {state.home_team.score}", fill=(160, 170, 190, 255), anchor="mm", font=font_foot)
 
         else:
-            # Individual Periods (p1, p2, p3, p4)
+            # Individual Periods (p1, p2, p3, p4, ot)
             p_idx = 0
+            is_ot = False
             if slot == "p2":
                 p_idx = 1
             elif slot == "p3":
                 p_idx = 2
             elif slot == "p4":
                 p_idx = 3
+            elif slot == "ot":
+                p_idx = 4
+                is_ot = True
 
             draw.rectangle([(0, 0), (100, 24)], fill=(32, 36, 46, 255))
             draw.line([(0, 24), (100, 24)], fill=(50, 60, 75, 255), width=1)
 
             font_hdr = get_bundled_font(11)
-            draw.text((50, 12), f"DRIVES • Q{p_idx + 1}" if state.league_key in ("NFL", "UFL", "NBA") else f"PERIOD {p_idx + 1}", fill=(180, 195, 215, 255), anchor="mm", font=font_hdr)
+            if is_ot:
+                hdr_label = "OVERTIME" if state.league_key != "MLB" else "EXTRA INN"
+            else:
+                hdr_label = f"DRIVES • Q{p_idx + 1}" if state.league_key in ("NFL", "UFL", "NBA") else f"PERIOD {p_idx + 1}"
+            draw.text((50, 12), hdr_label, fill=(180, 195, 215, 255), anchor="mm", font=font_hdr)
 
             a_sc = summary.away_linescores[p_idx] if len(summary.away_linescores) > p_idx else "0"
             h_sc = summary.home_linescores[p_idx] if len(summary.home_linescores) > p_idx else "0"
