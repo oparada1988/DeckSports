@@ -418,28 +418,6 @@ class GameHubAction(ActionBase):
         self._celebration_row.connect("notify::active", self._on_celebration_toggled)
         rows.append(self._celebration_row)
 
-        # 8. Test Celebration Row
-        test_row = Adw.ActionRow(
-            title="Score Celebration Preview",
-            subtitle="Trigger a 3-second full-deck animation for followed team"
-        )
-        test_btn = Gtk.Button(label="Play Animation")
-        test_btn.set_valign(Gtk.Align.CENTER)
-        test_btn.connect("clicked", self._on_test_celebration_clicked)
-        test_row.add_suffix(test_btn)
-        rows.append(test_row)
-
-        # 9. Test Victory Jumbotron Row
-        test_vic_row = Adw.ActionRow(
-            title="Victory Celebration Preview",
-            subtitle="Trigger a 4-second victory confetti & fireworks animation"
-        )
-        test_vic_btn = Gtk.Button(label="Play Victory")
-        test_vic_btn.set_valign(Gtk.Align.CENTER)
-        test_vic_btn.connect("clicked", self._on_test_victory_clicked)
-        test_vic_row.add_suffix(test_vic_btn)
-        rows.append(test_vic_row)
-
         return rows
 
     def _on_hold_mode_changed(self, row, _pspec):
@@ -461,62 +439,6 @@ class GameHubAction(ActionBase):
         settings = self.get_settings()
         settings["enable_celebrations"] = row.get_active()
         self.set_settings(settings)
-
-    def _on_test_celebration_clicked(self, _btn):
-        settings = self.get_settings()
-        coords = getattr(self.input_ident, "coords", None)
-        hub_league, hub_team_id, _ = self.plugin_base.sports_service.get_nearest_hub_target(coords)
-        league = settings.get("league") or hub_league
-        team_id = str(settings.get("team_id") or hub_team_id)
-
-        state = self.plugin_base.sports_service.get_game_state(league, team_id)
-        team = state.away_team if (state.followed_team_id and str(state.away_team.id) == str(state.followed_team_id)) else state.home_team
-        team_name = team.name if team.name else "Followed Team"
-        team_abbrev = team.abbreviation if team.abbreviation else "TEAM"
-        p_color = team.color if team.color else (0, 53, 148, 255)
-        alt_color = team.alternate_color if team.alternate_color else (200, 205, 215, 255)
-
-        if hasattr(self.plugin_base.sports_service, "celebration_manager"):
-            self.plugin_base.sports_service.celebration_manager.trigger(
-                league_key=league,
-                team_name=team_name,
-                team_abbrev=team_abbrev,
-                primary_color=p_color,
-                alt_color=alt_color,
-                force_preview=True
-            )
-
-    def _on_test_victory_clicked(self, _btn):
-        settings = self.get_settings()
-        coords = getattr(self.input_ident, "coords", None)
-        hub_league, hub_team_id, _ = self.plugin_base.sports_service.get_nearest_hub_target(coords)
-        league = settings.get("league") or hub_league
-        team_id = str(settings.get("team_id") or hub_team_id)
-
-        state = self.plugin_base.sports_service.get_game_state(league, team_id)
-        team = state.away_team if (state.followed_team_id and str(state.away_team.id) == str(state.followed_team_id)) else state.home_team
-        opp = state.home_team if team == state.away_team else state.away_team
-        team_name = team.name if team.name else "Followed Team"
-        team_abbrev = team.abbreviation if team.abbreviation else "TEAM"
-        p_color = team.color if team.color else (0, 53, 148, 255)
-        alt_color = team.alternate_color if team.alternate_color else (200, 205, 215, 255)
-
-        my_sc = team.score if team.score else "28"
-        opp_sc = opp.score if opp.score else "21"
-        opp_abbrev = opp.abbreviation if opp.abbreviation else "OPP"
-
-        if hasattr(self.plugin_base.sports_service, "celebration_manager"):
-            self.plugin_base.sports_service.celebration_manager.trigger_victory(
-                league_key=league,
-                team_name=team_name,
-                team_abbrev=team_abbrev,
-                primary_color=p_color,
-                alt_color=alt_color,
-                my_score=my_sc,
-                opp_abbrev=opp_abbrev,
-                opp_score=opp_sc,
-                force_preview=True
-            )
 
     def _on_tap_mode_changed(self, row, _pspec):
         idx = row.get_selected()
