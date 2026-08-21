@@ -90,6 +90,87 @@ def get_fitted_font(text: str, max_width: int = 90, max_size: int = 14, min_size
     _, font = format_fitted_text(text, max_width=max_width, max_size=max_size, min_size=min_size)
     return font
 
+_BROADCAST_LOGO_CACHE: dict[str, Image.Image | None] = {}
+
+def get_broadcast_logo(channel_name: str, max_size: tuple[int, int] = (74, 38)) -> Image.Image | None:
+    """Matches and loads transparent official TV network logo PNG for the given channel."""
+    if not channel_name:
+        return None
+    raw = channel_name.lower().strip()
+    matched_key = None
+    if "espn+" in raw or "espn plus" in raw:
+        matched_key = "espn_plus"
+    elif "espn2" in raw:
+        matched_key = "espn2"
+    elif "espnu" in raw:
+        matched_key = "espnu"
+    elif "espn" in raw:
+        matched_key = "espn"
+    elif "fs1" in raw or "fox sports 1" in raw:
+        matched_key = "fs1"
+    elif "fs2" in raw or "fox sports 2" in raw:
+        matched_key = "fs2"
+    elif "fox" in raw:
+        matched_key = "fox"
+    elif "cbssn" in raw or "cbs sports network" in raw:
+        matched_key = "cbssn"
+    elif "cbs" in raw:
+        matched_key = "cbs"
+    elif "peacock" in raw:
+        matched_key = "peacock"
+    elif "nbc" in raw:
+        matched_key = "nbc"
+    elif "abc" in raw:
+        matched_key = "abc"
+    elif "trutv" in raw or "tru tv" in raw:
+        matched_key = "trutv"
+    elif "tnt" in raw:
+        matched_key = "tnt"
+    elif "tbs" in raw:
+        matched_key = "tbs"
+    elif "redzone" in raw:
+        matched_key = "nfl_redzone"
+    elif "nfl net" in raw or "nfl network" in raw or "nfln" in raw:
+        matched_key = "nfl_network"
+    elif "prime" in raw or "amazon" in raw:
+        matched_key = "prime_video"
+    elif "apple" in raw:
+        matched_key = "apple_tv"
+    elif "nba tv" in raw or "nbatv" in raw:
+        matched_key = "nba_tv"
+    elif "mlb net" in raw or "mlb network" in raw or "mlbn" in raw:
+        matched_key = "mlb_network"
+    elif "nhl net" in raw or "nhl network" in raw or "nhln" in raw:
+        matched_key = "nhl_network"
+    elif "cw" in raw:
+        matched_key = "cw"
+    elif "bally" in raw:
+        matched_key = "bally_sports"
+    elif "usa" in raw:
+        matched_key = "usa_network"
+
+    if not matched_key:
+        return None
+
+    cache_key = f"{matched_key}_{max_size[0]}x{max_size[1]}"
+    if cache_key in _BROADCAST_LOGO_CACHE:
+        return _BROADCAST_LOGO_CACHE[cache_key]
+
+    plugin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    logo_path = os.path.join(plugin_dir, "assets", "broadcast-logos", f"{matched_key}.png")
+    if os.path.exists(logo_path):
+        try:
+            with Image.open(logo_path) as im:
+                im = im.convert("RGBA")
+                im.thumbnail(max_size, Image.Resampling.BILINEAR)
+                _BROADCAST_LOGO_CACHE[cache_key] = im
+                return im
+        except Exception:
+            pass
+
+    _BROADCAST_LOGO_CACHE[cache_key] = None
+    return None
+
 class SituationAction(ActionBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -206,20 +287,30 @@ class SituationAction(ActionBase):
             # Dedicated TV / Network Broadcast Card
             draw.rectangle([(0, 0), (100, 24)], fill=(22, 48, 78, 255))
             draw.line([(0, 24), (100, 24)], fill=(45, 95, 150, 255), width=1)
-            draw.text((50, 12), "BROADCAST", fill=(180, 220, 255, 255), anchor="mm", font=font_hdr)
+            hdr_text = "LIVE TV" if state.status_state == "in" else "BROADCAST"
+            draw.text((50, 12), hdr_text, fill=(180, 220, 255, 255), anchor="mm", font=font_hdr)
 
-            # TV Network with auto-scaling font
+            # TV Network
             tv_str = summary.broadcast_channel if summary.broadcast_channel else (
                 "ESPN" if state.league_key in ("NFL", "NBA", "MLB", "NHL", "MLS") else f"{state.league_key} TV"
             )
-            tv_disp, font_tv = format_fitted_text(tv_str, max_width=90, max_size=15, min_size=9)
-            draw.text((50, 48), tv_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_tv)
+
+            # Attempt to render official transparent TV broadcast logo
+            b_logo = get_broadcast_logo(tv_str, max_size=(74, 36))
+            if b_logo:
+                lx = 50 - b_logo.width // 2
+                ly = 50 - b_logo.height // 2
+                base.alpha_composite(b_logo, (lx, ly))
+            else:
+                tv_disp, font_tv = format_fitted_text(tv_str, max_width=90, max_size=15, min_size=9)
+                draw.text((50, 48), tv_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_tv)
 
             # Footer
             draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
             draw.line([(0, 76), (100, 76)], fill=(45, 50, 60, 255), width=1)
-            tv_sub = "LIVE COVERAGE" if state.status_state == "in" else ("OFFICIAL TV" if summary.broadcast_channel else "BROADCAST")
-            draw.text((50, 88), tv_sub, fill=(130, 200, 255, 255), anchor="mm", font=font_sub)
+            tv_sub = tv_str.upper() if len(tv_str) <= 12 else ("LIVE COVERAGE" if state.status_state == "in" else "OFFICIAL TV")
+            vf_disp, font_vf = format_fitted_text(tv_sub, max_width=92, max_size=10, min_size=8)
+            draw.text((50, 88), vf_disp, fill=(130, 200, 255, 255), anchor="mm", font=font_vf)
 
         elif mode == "venue_tv":
             # Combined Venue / TV / Weather Card

@@ -150,7 +150,7 @@
                         {
                             "id": "com_oparada1988_DeckSports::SituationAction",
                             "settings": {
-                                "mode": "venue_tv"
+                                "mode": "broadcast"
                             }
                         }
                     ],
