@@ -300,7 +300,7 @@ class SituationAction(ActionBase):
             if b_logo:
                 lx = 50 - b_logo.width // 2
                 ly = 50 - b_logo.height // 2
-                base.alpha_composite(b_logo, (lx, ly))
+                img.alpha_composite(b_logo, (lx, ly))
             else:
                 tv_disp, font_tv = format_fitted_text(tv_str, max_width=90, max_size=15, min_size=9)
                 draw.text((50, 48), tv_disp, fill=(255, 255, 255, 255), anchor="mm", font=font_tv)
