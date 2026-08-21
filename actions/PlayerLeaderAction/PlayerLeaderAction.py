@@ -87,9 +87,8 @@ class PlayerLeaderAction(ActionBase):
         super().__init__(*args, **kwargs)
         self._side_row: Adw.ComboRow | None = None
         self._cat_row: Adw.ComboRow | None = None
-        self._cycle_timer: int | None = None
-        self._manual_phase_override: int | None = None
-        self._last_manual_toggle: float = 0.0
+        self._peek_timer: int | None = None
+        self._is_peeking: bool = False
 
     def _ensure_media_control(self):
         try:
@@ -117,42 +116,44 @@ class PlayerLeaderAction(ActionBase):
         hub_league, hub_team, _ = self.plugin_base.sports_service.get_nearest_hub_target(my_coords)
         if hub_league and hub_team:
             self.plugin_base.sports_service.fetch_game_summary(hub_league, hub_team, force=False)
-        
-        # Periodic 3.5-second animation cycle timer
-        if self._cycle_timer is None:
-            self._cycle_timer = GLib.timeout_add_seconds(3, self._on_cycle_timer)
         GLib.idle_add(self.update_display)
 
     def on_remove(self):
-        if self._cycle_timer:
+        if self._peek_timer:
             try:
-                GLib.source_remove(self._cycle_timer)
+                GLib.source_remove(self._peek_timer)
             except Exception:
                 pass
-            self._cycle_timer = None
+            self._peek_timer = None
         self.plugin_base.sports_service.remove_listener(self.on_game_state_updated)
-
-    def _on_cycle_timer(self):
-        if not self.get_is_present():
-            return False
-        self.update_display()
-        return True
 
     def on_game_state_updated(self, league_key: str, team_id: str, state: GameState):
         GLib.idle_add(self.update_display)
 
     def on_key_down(self):
-        # Interactive On-Tap Toggle: immediately flip between Portrait and Stat Breakdown
-        now = time.time()
-        cur_phase = int(now / 3.5) % 2 if self._manual_phase_override is None else self._manual_phase_override
-        self._manual_phase_override = 1 - cur_phase
-        self._last_manual_toggle = now
+        # Momentary 3-Second Hero Headshot Peek on Press
+        if self._peek_timer:
+            try:
+                GLib.source_remove(self._peek_timer)
+            except Exception:
+                pass
+            self._peek_timer = None
+
+        self._is_peeking = True
+        self._peek_timer = GLib.timeout_add_seconds(3, self._end_peek)
 
         my_coords = getattr(self.input_ident, "coords", None)
         hub_league, hub_team, _ = self.plugin_base.sports_service.get_nearest_hub_target(my_coords)
         if hub_league and hub_team:
             self.plugin_base.sports_service.fetch_game_summary(hub_league, hub_team, force=True)
         self.update_display()
+
+    def _end_peek(self):
+        self._is_peeking = False
+        self._peek_timer = None
+        if self.get_is_present():
+            self.update_display()
+        return False
 
     def get_config_rows(self) -> list:
         rows = []
@@ -226,48 +227,37 @@ class PlayerLeaderAction(ActionBase):
         cat_idx = settings.get("cat_idx", 0)
         leader = leaders[cat_idx] if len(leaders) > cat_idx else None
 
-        # Determine Active Phase (Phase 0 = Hero Headshot Portrait, Phase 1 = Live Stat Breakdown)
-        now = time.time()
-        if self._manual_phase_override is not None and (now - self._last_manual_toggle) < 6.0:
-            phase = self._manual_phase_override
-        else:
-            self._manual_phase_override = None
-            phase = int(now / 3.5) % 2
-
         img = Image.new("RGBA", (100, 100), (22, 24, 30, 255))
         draw = ImageDraw.Draw(img)
 
+        # 1. Header Banner
         header_color = team.color if team.color else (45, 45, 45, 255)
         draw.rectangle([(0, 0), (100, 24)], fill=header_color)
         draw.line([(0, 24), (100, 24)], fill=(255, 255, 255, 45), width=1)
 
         font_hdr = get_bundled_font(10)
+        cat_title = leader.category.upper() if leader else "LEADER"
+        draw.text((50, 12), f"{team.abbreviation} {cat_title}"[:15], fill=(255, 255, 255, 255), anchor="mm", font=font_hdr)
 
-        if phase == 0:
+        if self._is_peeking:
             # -----------------------------------------------------------------
-            # PHASE 0: Hero Athlete Headshot Portrait View (Large 52x52px Avatar)
+            # ON-PRESS MOMENTARY 3-SECOND PEEK: Large 54x54px Hero Portrait
             # -----------------------------------------------------------------
-            cat_title = leader.category.upper() if leader else "LEADER"
-            hdr_text = f"{team.abbreviation} {cat_title}"[:15]
-            draw.text((50, 12), hdr_text, fill=(255, 255, 255, 255), anchor="mm", font=font_hdr)
-
-            # Circular Headshot Framing
             cx, cy = 50, 50
             draw.ellipse([(cx - 27, cy - 26), (cx + 27, cy + 26)], fill=(32, 38, 50, 255), outline=(75, 88, 115, 255), width=2)
 
             if leader and leader.headshot_url:
-                hs = self.plugin_base.sports_service.get_headshot(leader.headshot_url, max_size=(52, 52))
+                hs = self.plugin_base.sports_service.get_headshot(leader.headshot_url, max_size=(54, 54))
                 if hs:
                     img.alpha_composite(hs, (cx - hs.width // 2, cy - hs.height // 2))
             elif team.logo_url:
-                mini_logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(46, 46))
+                mini_logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(48, 48))
                 if mini_logo:
                     img.alpha_composite(mini_logo, (cx - mini_logo.width // 2, cy - mini_logo.height // 2))
 
-            # Jersey number badge overlay
+            # Jersey badge overlay
             if leader and leader.jersey:
-                badge_x = cx + 14
-                badge_y = cy + 12
+                badge_x, badge_y = cx + 14, cy + 12
                 draw.ellipse([(badge_x - 8, badge_y - 8), (badge_x + 8, badge_y + 8)], fill=(255, 215, 0, 255), outline=(20, 24, 30, 255), width=1)
                 font_j = get_bundled_font(9)
                 draw.text((badge_x, badge_y), f"{leader.jersey}", fill=(0, 0, 0, 255), anchor="mm", font=font_j)
@@ -281,36 +271,34 @@ class PlayerLeaderAction(ActionBase):
 
         else:
             # -----------------------------------------------------------------
-            # PHASE 1: Live Performance Stat Breakdown View (Bold Key Numbers)
+            # DEFAULT RESTING STATE: Compact Card (Small Headshot + Name + Stats)
             # -----------------------------------------------------------------
+            # Circular small headshot avatar on the left (36x36px)
+            if leader and leader.headshot_url:
+                hs = self.plugin_base.sports_service.get_headshot(leader.headshot_url, max_size=(36, 36))
+                if hs:
+                    img.alpha_composite(hs, (6, 32))
+                else:
+                    draw.ellipse([(6, 32), (42, 68)], fill=(38, 44, 58, 255), outline=(70, 80, 105, 255), width=2)
+            elif team.logo_url:
+                mini_logo = self.plugin_base.sports_service.get_image(team.logo_url, max_size=(34, 34))
+                if mini_logo:
+                    img.alpha_composite(mini_logo, (7, 33))
+            else:
+                draw.ellipse([(6, 32), (42, 68)], fill=(38, 44, 58, 255), outline=(70, 80, 105, 255), width=2)
+
+            # Player name & jersey on the right
+            p_name = leader.name if leader else team.short_name
+            name_disp, font_name = format_fitted_text(p_name, max_width=52, max_size=11, min_size=8)
+            font_j = get_bundled_font(10)
+            draw.text((46, 42), name_disp, fill=(255, 255, 255, 255), anchor="lm", font=font_name)
             if leader and leader.jersey:
-                hdr_text = f"{leader.short_name} #{leader.jersey}"
-            elif leader:
-                hdr_text = leader.short_name
-            else:
-                hdr_text = f"{team.abbreviation} STATS"
-            draw.text((50, 12), hdr_text[:16], fill=(255, 255, 255, 255), anchor="mm", font=font_hdr)
+                draw.text((46, 57), f"#{leader.jersey}", fill=(255, 210, 60, 255), anchor="lm", font=font_j)
 
-            # Center: Bold Primary Stat
-            stat_text = leader.display_stat if (leader and leader.display_stat) else team.record
-            parts = [p.strip() for p in stat_text.replace(",", " ").split() if p.strip()]
-            
-            if parts:
-                main_val = parts[0] + (" " + parts[1] if len(parts) > 1 and not parts[1].isdigit() else "")
-                sub_val = " ".join(parts[1:]) if len(parts) > 1 and parts[1].isdigit() else (" ".join(parts[2:]) if len(parts) > 2 else (leader.category.upper() if leader else "RECORD"))
-            else:
-                main_val = stat_text
-                sub_val = leader.category.upper() if leader else ""
-
-            font_main = get_bundled_font(16 if len(main_val) <= 8 else 13)
-            font_sub = get_bundled_font(11)
-
-            draw.text((50, 42), main_val[:12], fill=(255, 220, 60, 255), anchor="mm", font=font_main)
-            draw.text((50, 60), sub_val[:14], fill=(160, 210, 255, 255), anchor="mm", font=font_sub)
-
-            # Footer: Full Stat Line
+            # Footer: Full Live Performance Stat Line
             draw.rectangle([(0, 76), (100, 100)], fill=(16, 18, 22, 255))
             draw.line([(0, 76), (100, 76)], fill=(45, 50, 60, 255), width=1)
+            stat_text = leader.display_stat if (leader and leader.display_stat) else team.record
             stat_disp, font_stat = format_fitted_text(stat_text, max_width=92, max_size=10, min_size=8)
             draw.text((50, 88), stat_disp, fill=(180, 205, 235, 255), anchor="mm", font=font_stat)
 
