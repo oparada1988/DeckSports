@@ -68,35 +68,11 @@ Tapping the center Game Hub key opens a dedicated dashboard page pre-configured 
   <img src="assets/gamehub_xl.png" alt="DeckSports Stream Deck XL Dashboard" width="90%">
 </p>
 
-* **Row 1 (Header & Scoreboard)**:
-  * Key 1: `< EXIT` (Return to Main Profile)
-  * Key 2: Away Full Line Score (Quarter-by-quarter breakdown)
-  * Key 3: Away Team Score & Primary Logo
-  * Key 4: Master Clock & Game Status Center Hub
-  * Key 5: Home Team Score & Primary Logo
-  * Key 6: Home Full Line Score (Quarter-by-quarter breakdown)
-  * Key 7: Stadium Venue & Live Weather
-  * Key 8: Official TV Broadcast Network Logo
-* **Row 2 (Player Leaders & Live Play Radar)**:
-  * Keys 1–3: Away Category Leaders (Passing / Points, Rushing / Rebounds, Receiving / Assists)
-  * Key 4: Down and Distance / Count and Outs Radar
-  * Key 5: Ball Spot / Red Zone / Base Runners Radar
-  * Keys 6–8: Home Category Leaders (Passing / Points, Rushing / Rebounds, Receiving / Assists)
-* **Row 3 (Head-to-Head Statistics & Scoring)**:
-  * Key 1: Total Yards / Field Goal % / Hits
-  * Key 2: 3rd Down Efficiency / 3-Point % / Shots on Goal
-  * Key 3: Turnovers / Fouls / Penalty Minutes
-  * Key 4: Time of Possession / Formations
-  * Key 5: Last Scoring Play Summary
-  * Key 6: League Standings & Division Race
-  * Key 7: Next Upcoming Match Schedule
-  * Key 8: Current Drive / Power Play Radar
-* **Row 4 (Quarter Breakdown & Extra Stats)**:
-  * Keys 1–4: Quarter 1, 2, 3, and 4 Period Line Scores
-  * Key 5: Overtime / Extra Period Line Score
-  * Key 6: Field Goals / Rebounds / Extra Stats
-  * Key 7: Penalty Minutes / Free Throw % / Power Play
-  * Key 8: Combined Venue, Weather, and TV Summary
+The 32-key layout organizes the entire match into four dedicated, 100% unique functional rows:
+* **Row 1 (Scoreboard & Matchup Hub)**: Exit navigation, full quarter line scores, home and away team scores with primary branding, centered game clock, stadium venue information, and official TV network broadcast logos.
+* **Row 2 (Player Leaders & Live Situational Radar)**: Category leaders for passing, rushing, and receiving, real-time down and distance, ball spot, red zone alerts, and base runners diamond tracking.
+* **Row 3 (Head-to-Head Team Statistics)**: Real-time comparisons for total yards, 3rd down efficiency, turnovers, time of possession, latest scoring play summary, division standings, next match schedule, and live drive summary.
+* **Row 4 (Quarter Breakdown & Extended Analytics)**: Individual period line scores (Q1–Q4, Overtime), field goals, rebounds, penalty minutes, free throw percentages, and weather summaries.
 
 ---
 
@@ -106,9 +82,10 @@ Tapping the center Game Hub key opens a dedicated dashboard page pre-configured 
   <img src="assets/gamehub_mk2.png" alt="DeckSports Stream Deck MK.2 Dashboard" width="70%">
 </p>
 
-* **Row 1**: Exit Button, Away Score/Logo, Centered Game Clock, Home Score/Logo, Venue / TV Broadcast Information.
-* **Row 2**: Away Primary Leader, Down and Distance, Ball Spot / Red Zone, Drive Information, Home Primary Leader.
-* **Row 3**: Total Yards Comparison, 3rd Down Efficiency, Last Scoring Play, Turnovers, Division Standings.
+The 15-key layout delivers an essential live game overview:
+* **Row 1**: Exit navigation, away and home team scores, centered master clock, and broadcast details.
+* **Row 2**: Primary athlete leaders, live situational down and distance, ball spot, and drive radar.
+* **Row 3**: Total yards comparison, 3rd down efficiency, latest scoring play, turnovers, and standings.
 
 ---
 
