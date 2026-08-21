@@ -650,86 +650,87 @@ class CelebrationManager:
                         draw.ellipse([(sx - 3, sy - 3), (sx + 3, sy + 3)], fill=(255, 220, 50, spark_alpha))
 
     def _draw_field_goal_background(self, draw, canvas_w, canvas_h, p_rgb, s_rgb, frame_idx, progress, cols, rows, logo_img=None, is_ufl_mega=False, frame_canvas=None):
-        """Field Goal / Mega Kick: 2-Phase Cinematic Sequence (Phase 1: Kicker Strike -> Phase 2: 3D Uprights Split)."""
+        """Field Goal / Mega Kick: 2-Phase Cinematic Sequence (Phase 1: Close-up Boot Strike -> Phase 2: 3D Uprights Split)."""
         if progress < 0.32:
             # -----------------------------------------------------------------
-            # PHASE 1: Close-up Turf Camera (Holder & Kicker Strike)
+            # PHASE 1: Extreme Close-up Field Camera (Center Ball & Boot Strike)
             # -----------------------------------------------------------------
             p1 = progress / 0.32  # 0.0 -> 1.0 within Phase 1
 
-            # 1. Close-up Turf Field
-            turf_dark = (16, 52, 24, 255)
-            turf_light = (22, 68, 30, 255)
+            # 1. Extreme Close-up Turf Field
+            turf_dark = (14, 48, 22, 255)
+            turf_light = (18, 62, 28, 255)
             draw.rectangle([(0, 0), (canvas_w, canvas_h)], fill=turf_dark)
-            for y in range(0, canvas_h, 30):
-                if (y // 30) % 2 == 0:
-                    draw.rectangle([(0, y), (canvas_w, min(canvas_h, y + 30))], fill=turf_light)
+            for y in range(0, canvas_h, 25):
+                if (y // 25) % 2 == 0:
+                    draw.rectangle([(0, y), (canvas_w, min(canvas_h, y + 25))], fill=turf_light)
 
-            # Yard chalk lines & hash marks
-            draw.line([(0, int(canvas_h * 0.76)), (canvas_w, int(canvas_h * 0.76))], fill=(240, 245, 255, 200), width=4)
-            for hx in range(40, canvas_w, 60):
-                draw.line([(hx, int(canvas_h * 0.65)), (hx, int(canvas_h * 0.73))], fill=(240, 245, 255, 140), width=3)
+            # Yard chalk line & hash marks
+            draw.line([(0, int(canvas_h * 0.82)), (canvas_w, int(canvas_h * 0.82))], fill=(240, 245, 255, 180), width=4)
+            for hx in range(30, canvas_w, 50):
+                draw.line([(hx, int(canvas_h * 0.72)), (hx, int(canvas_h * 0.80))], fill=(240, 245, 255, 130), width=3)
 
-            # Stadium lights glare at upper edge
+            # Stadium lights glare
             for lx in (int(canvas_w * 0.2), int(canvas_w * 0.8)):
-                draw.ellipse([(lx - 80, -40), (lx + 80, 50)], fill=(255, 255, 230, 40))
+                draw.ellipse([(lx - 90, -50), (lx + 90, 60)], fill=(255, 255, 230, 45))
 
-            # 2. Football Placement on Tee / Turf
-            ball_base_x = canvas_w // 2 + 10
-            ball_base_y = int(canvas_h * 0.72)
+            # 2. Football Dimensions (Prominently centered in close-up)
+            cx = canvas_w // 2
+            cy = int(canvas_h * 0.54)
+            bw = int(canvas_h * 0.18)
+            bh = int(canvas_h * 0.28)
 
-            # 3. Holder Silhouette (Kneeling to the left of the ball)
-            hx = ball_base_x - 36
-            hy = ball_base_y
-            # Holder Helmet
-            draw.ellipse([(hx - 14, hy - 48), (hx + 14, hy - 20)], fill=s_rgb)
-            draw.ellipse([(hx - 12, hy - 46), (hx + 12, hy - 22)], fill=p_rgb)
-            # Holder Body (Kneeling posture)
-            draw.polygon([(hx - 22, hy - 20), (hx + 18, hy - 20), (hx + 26, hy + 24), (hx - 30, hy + 24)], fill=p_rgb)
-            # Holder Arm reaching to top of ball
-            draw.line([(hx + 10, hy - 8), (ball_base_x, ball_base_y - 18)], fill=s_rgb, width=4)
+            # Holder gloved finger holding top tip
+            draw.ellipse([(cx - 16, cy - bh - 14), (cx + 12, cy - bh + 14)], fill=(235, 235, 240, 255))
+            draw.line([(cx + 8, cy - bh), (cx + 80, cy - bh - 40)], fill=p_rgb, width=12)
 
-            # 4. Kicker in Motion (Approaching from left and swinging leg)
-            kx = int(canvas_w * 0.22 + p1 * (ball_base_x - canvas_w * 0.22 - 35))
-            ky = ball_base_y - 10
+            # 3. Kicking Cleat & Taped Ankle Sweep
+            target_strike_x = cx - int(bw * 0.4)
+            target_strike_y = cy + int(bh * 0.4)
+            cleat_x = int(-120 + p1 * 2.0 * (target_strike_x + 120)) if p1 < 0.50 else target_strike_x + int((p1 - 0.50) * 120)
+            cleat_y = int(canvas_h + 100 - p1 * 2.0 * (canvas_h + 100 - target_strike_y)) if p1 < 0.50 else target_strike_y - int((p1 - 0.50) * 60)
 
-            # Kicker Helmet & Jersey Torso
-            draw.ellipse([(kx - 16, ky - 75), (kx + 16, ky - 43)], fill=s_rgb)
-            draw.ellipse([(kx - 14, ky - 73), (kx + 14, ky - 45)], fill=p_rgb)
-            draw.polygon([(kx - 20, ky - 43), (kx + 18, ky - 43), (kx + 24, ky + 10), (kx - 18, ky + 10)], fill=p_rgb)
-            # Plant leg (supporting)
-            draw.line([(kx - 4, ky + 10), (kx - 8, ball_base_y + 24)], fill=(25, 28, 35, 255), width=6)
+            # Cleat body & athletic taped leg
+            draw.line([(cleat_x - 70, cleat_y + 40), (cleat_x - 20, cleat_y)], fill=(240, 240, 245, 255), width=20)
+            draw.polygon([(cleat_x - 30, cleat_y + 12), (cleat_x + 35, cleat_y + 6), (cleat_x + 38, cleat_y - 12), (cleat_x - 25, cleat_y - 16)], fill=p_rgb)
+            draw.polygon([(cleat_x - 30, cleat_y + 12), (cleat_x + 35, cleat_y + 6), (cleat_x + 36, cleat_y + 18), (cleat_x - 28, cleat_y + 20)], fill=(30, 30, 30, 255))
+            draw.line([(cleat_x - 10, cleat_y - 2), (cleat_x + 20, cleat_y - 4)], fill=s_rgb, width=4)
 
-            # Kicking leg dynamic rotational swing
-            swing_deg = -35.0 + p1 * 100.0
-            rad = math.radians(swing_deg)
-            hip_x = kx + 8
-            hip_y = ky + 6
-            leg_len = 42
-            foot_x = hip_x + int(math.cos(rad) * leg_len)
-            foot_y = hip_y + int(math.sin(rad) * leg_len)
-            draw.line([(hip_x, hip_y), (foot_x, foot_y)], fill=(25, 28, 35, 255), width=7)
-            draw.ellipse([(foot_x - 5, foot_y - 5), (foot_x + 5, foot_y + 5)], fill=s_rgb)
-
-            # 5. Impact Flash & Ball Launch Physics
-            if p1 < 0.52:
-                # Ball resting vertically on tee
-                draw.ellipse([(ball_base_x - 9, ball_base_y - 20), (ball_base_x + 9, ball_base_y + 14)], fill=(145, 65, 22, 255), outline=(75, 30, 10, 255))
-                draw.line([(ball_base_x - 5, ball_base_y - 3), (ball_base_x + 5, ball_base_y - 3)], fill=(255, 255, 255, 255), width=2)
+            # 4. Football & Impact Physics
+            if p1 < 0.50:
+                # Football resting on tee before impact
+                draw.ellipse([(cx - bw, cy - bh), (cx + bw, cy + bh)], fill=(142, 65, 22, 255), outline=(75, 30, 10, 255), width=3)
+                # White end stripes
+                draw.arc([(cx - bw + 4, cy - bh + 6), (cx + bw - 4, cy - int(bh * 0.4))], start=0, end=360, fill=(255, 255, 255, 180), width=3)
+                draw.arc([(cx - bw + 4, cy + int(bh * 0.4)), (cx + bw - 4, cy + bh - 6)], start=0, end=360, fill=(255, 255, 255, 180), width=3)
+                # White center laces
+                draw.line([(cx, cy - int(bh * 0.6)), (cx, cy + int(bh * 0.6))], fill=(255, 255, 255, 255), width=4)
+                for ly in range(cy - int(bh * 0.4), cy + int(bh * 0.5), 14):
+                    draw.line([(cx - 8, ly), (cx + 8, ly)], fill=(255, 255, 255, 255), width=3)
             else:
-                # Moment of Strike & Blast-off!
-                impact_prog = (p1 - 0.52) / 0.48
-                flash_r = int(impact_prog * 130)
-                flash_alpha = max(0, int(220 * (1.0 - impact_prog)))
-                draw.ellipse([(ball_base_x - flash_r, ball_base_y - flash_r), (ball_base_x + flash_r, ball_base_y + flash_r)], outline=(255, 240, 150, flash_alpha), width=3)
-                draw.ellipse([(ball_base_x - 18, ball_base_y - 18), (ball_base_x + 18, ball_base_y + 18)], fill=(255, 255, 255, flash_alpha))
+                # Moment of Strike & Explosive Blast-Off!
+                imp_p = (p1 - 0.50) / 0.50
+                # Contact starburst & expanding shockwave ring
+                flash_r = int(imp_p * 190)
+                flash_alpha = max(0, int(255 * (1.0 - imp_p)))
+                draw.ellipse([(target_strike_x - flash_r, target_strike_y - flash_r), (target_strike_x + flash_r, target_strike_y + flash_r)], outline=(255, 240, 140, flash_alpha), width=4)
+                draw.ellipse([(target_strike_x - 22, target_strike_y - 22), (target_strike_x + 22, target_strike_y + 22)], fill=(255, 255, 255, flash_alpha))
 
-                # Ball rocketing upward toward the camera
-                cur_ball_y = int(ball_base_y - impact_prog * canvas_h * 1.1)
-                cur_ball_x = int(ball_base_x + impact_prog * (canvas_w * 0.12))
-                cur_ball_sz = int(14 + impact_prog * 36)
-                draw.ellipse([(cur_ball_x - cur_ball_sz, cur_ball_y - cur_ball_sz // 2), (cur_ball_x + cur_ball_sz, cur_ball_y + cur_ball_sz // 2)], fill=(150, 70, 25, 255), outline=(80, 35, 12, 255))
-                draw.line([(cur_ball_x - cur_ball_sz // 2, cur_ball_y), (cur_ball_x + cur_ball_sz // 2, cur_ball_y)], fill=(255, 255, 255, 255), width=3)
+                # Turf divot / pellet spray
+                for sp_i in range(8):
+                    ang = (sp_i / 8) * math.pi * 2
+                    sp_dist = int(imp_p * 90)
+                    sp_x = target_strike_x + int(math.cos(ang) * sp_dist)
+                    sp_y = target_strike_y + int(math.sin(ang) * sp_dist * 0.6)
+                    draw.ellipse([(sp_x - 3, sp_y - 3), (sp_x + 3, sp_y + 3)], fill=(40, 120, 50, flash_alpha))
+
+                # Football rocketing directly upward past the camera lens
+                b_y = int(cy - imp_p * canvas_h * 1.3)
+                b_x = int(cx + imp_p * (canvas_w * 0.12))
+                cur_bw = int(bw * (1.0 + imp_p * 1.8))
+                cur_bh = int(bh * (1.0 + imp_p * 1.8))
+                draw.ellipse([(b_x - cur_bw, b_y - cur_bh), (b_x + cur_bw, b_y + cur_bh)], fill=(150, 70, 25, 255), outline=(80, 35, 12, 255), width=3)
+                draw.line([(b_x - cur_bw // 2, b_y), (b_x + cur_bw // 2, b_y)], fill=(255, 255, 255, 255), width=4)
 
         else:
             # -----------------------------------------------------------------
